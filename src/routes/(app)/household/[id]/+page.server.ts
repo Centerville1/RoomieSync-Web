@@ -624,6 +624,7 @@ export const actions: Actions = {
     const formData = await request.formData();
     const expenseId = formData.get('expenseId') as string;
     const description = formData.get('description') as string;
+    const isOptional = formData.get('isOptional') === 'on';
     const splitWith = formData.getAll('splitWith') as string[];
 
     if (!expenseId) {
@@ -651,10 +652,10 @@ export const actions: Actions = {
       return fail(403, { error: 'You can only edit expenses you created' });
     }
 
-    // Update the expense description
+    // Update the expense description and optional status
     await db
       .update(expenses)
-      .set({ description: description.trim(), updatedAt: new Date() })
+      .set({ description: description.trim(), isOptional, updatedAt: new Date() })
       .where(eq(expenses.id, expenseId));
 
     // Handle split changes if splitWith was provided

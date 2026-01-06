@@ -159,52 +159,54 @@
 </script>
 
 <div class="expense-grid-wrapper">
-  <!-- Sticky header -->
-  <div class="grid-header" style="--member-count: {sortedMembers.length}">
-    {#each sortedMembers as member}
-      {@const isCurrentUser = member.id === currentUserId}
-      {@const balance = memberBalances[member.id]}
-      <div class="member-header" class:current-user={isCurrentUser}>
-        <span class="member-name">
-          {getMemberDisplayName(member)}{#if isCurrentUser}
-            (You){/if}
-        </span>
-        {#if !isCurrentUser && balance}
-          {@const hasOwesYou = balance.owesYou > 0 || balance.owesYouOptional > 0}
-          {@const hasYouOwe = balance.youOwe > 0 || balance.youOweOptional > 0}
-          <div class="member-balance">
-            <div class="balance-items">
-              {#if hasOwesYou}
-                <span class="owes-you">Owes you: {formatCurrency(balance.owesYou)}</span>
-                {#if balance.owesYouOptional > 0}
-                  <span class="balance-optional"
-                    ><span class="optional-badge">Optional</span>
-                    {formatCurrency(balance.owesYouOptional)}</span
-                  >
-                {/if}
-              {/if}
-              {#if hasYouOwe}
-                <span class="you-owe">You owe: {formatCurrency(balance.youOwe)}</span>
-                {#if balance.youOweOptional > 0}
-                  <span class="balance-optional"
-                    ><span class="optional-badge">Optional</span>
-                    {formatCurrency(balance.youOweOptional)}</span
-                  >
-                {/if}
-              {/if}
-              {#if !hasOwesYou && !hasYouOwe}
-                <span class="settled">Settled up</span>
-              {/if}
-            </div>
-          </div>
-        {/if}
-      </div>
-    {/each}
-  </div>
-
-  <!-- Scrollable body -->
+  <!-- Scrollable container for both header and content -->
   <div class="scroll-container" bind:this={scrollContainer}>
-    <div class="expense-grid" style="--member-count: {sortedMembers.length}">
+    <div class="grid-content" style="--member-count: {sortedMembers.length}">
+      <!-- Sticky header -->
+      <div class="grid-header">
+        {#each sortedMembers as member}
+          {@const isCurrentUser = member.id === currentUserId}
+          {@const balance = memberBalances[member.id]}
+          <div class="member-header" class:current-user={isCurrentUser}>
+            <span class="member-name">
+              {getMemberDisplayName(member)}{#if isCurrentUser}
+                (You){/if}
+            </span>
+            {#if !isCurrentUser && balance}
+              {@const hasOwesYou = balance.owesYou > 0 || balance.owesYouOptional > 0}
+              {@const hasYouOwe = balance.youOwe > 0 || balance.youOweOptional > 0}
+              <div class="member-balance">
+                <div class="balance-items">
+                  {#if hasOwesYou}
+                    <span class="owes-you">Owes you: {formatCurrency(balance.owesYou)}</span>
+                    {#if balance.owesYouOptional > 0}
+                      <span class="balance-optional"
+                        ><span class="optional-badge">Optional</span>
+                        {formatCurrency(balance.owesYouOptional)}</span
+                      >
+                    {/if}
+                  {/if}
+                  {#if hasYouOwe}
+                    <span class="you-owe">You owe: {formatCurrency(balance.youOwe)}</span>
+                    {#if balance.youOweOptional > 0}
+                      <span class="balance-optional"
+                        ><span class="optional-badge">Optional</span>
+                        {formatCurrency(balance.youOweOptional)}</span
+                      >
+                    {/if}
+                  {/if}
+                  {#if !hasOwesYou && !hasYouOwe}
+                    <span class="settled">Settled up</span>
+                  {/if}
+                </div>
+              </div>
+            {/if}
+          </div>
+        {/each}
+      </div>
+
+      <!-- Grid body -->
+      <div class="expense-grid">
       {#each expenses as expense}
         {@const isSelectable = isSelectableByCurrentUser(expense)}
         {@const isSelected = selectedExpenseIds.has(expense.id)}
@@ -306,8 +308,12 @@
                   </div>
                 {:else}
                   <div class="unpaid-status">
-                    <span class="status-icon unpaid" class:other-column={!isMyColumn} title="Unpaid"
-                      >☐</span
+                    <span
+                      class="status-icon unpaid"
+                      class:other-column={!isMyColumn}
+                      class:selected-check={isSelected && isMyColumn}
+                      title={isSelected && isMyColumn ? 'Selected' : 'Unpaid'}
+                      >{isSelected && isMyColumn ? '☑' : '☐'}</span
                     >
                     {#if isMyExpense}
                       <span class="owes-info">Owes you {formatCurrency(getUserShare(expense))}</span
@@ -334,6 +340,7 @@
       {#if isLoadingMore}
         <div class="loading-more">Loading more...</div>
       {/if}
+      </div>
     </div>
   </div>
 </div>
@@ -343,18 +350,28 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     background-color: var(--color-bg-primary);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
     max-height: 500px;
     margin-bottom: var(--space-lg);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .scroll-container {
+    overflow: auto;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .grid-content {
+    min-width: max-content;
   }
 
   .grid-header {
     display: grid;
     grid-template-columns: repeat(var(--member-count), minmax(150px, 1fr));
-    min-width: max-content;
-    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 1;
     background-color: var(--color-bg-tertiary);
     border-bottom: 2px solid var(--color-border);
   }
@@ -417,15 +434,9 @@
     color: var(--color-text-tertiary);
   }
 
-  .scroll-container {
-    overflow: auto;
-    flex: 1;
-  }
-
   .expense-grid {
     display: grid;
     grid-template-columns: repeat(var(--member-count), minmax(150px, 1fr));
-    min-width: max-content;
   }
 
   .grid-row {
@@ -464,9 +475,13 @@
     background-color: rgba(239, 68, 68, 0.5);
   }
 
-  .grid-cell.selected {
-    background-color: var(--color-bg-tertiary);
-    outline: 2px solid var(--color-primary);
+  .grid-row.selected .grid-cell {
+    background-color: rgba(239, 68, 68, 0.25);
+  }
+
+  .grid-row.selected .grid-cell.creator {
+    background-color: rgba(239, 68, 68, 0.35);
+    outline: 2px solid var(--color-error, #ef4444);
     outline-offset: -2px;
   }
 
@@ -634,6 +649,11 @@
   .status-icon.unpaid.other-column {
     color: var(--color-text-tertiary);
     background-color: var(--color-bg-tertiary);
+  }
+
+  .status-icon.unpaid.selected-check {
+    color: var(--color-primary, #ff7a4d);
+    background-color: rgba(255, 122, 77, 0.15);
   }
 
   .status-icon.optional {

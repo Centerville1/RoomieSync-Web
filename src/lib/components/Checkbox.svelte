@@ -8,7 +8,16 @@
 </script>
 
 <div class="checkbox-group">
-  <input {id} {name} {value} type="checkbox" bind:checked {disabled} class="checkbox" on:change />
+  <input
+    {id}
+    {name}
+    value={value || 'on'}
+    type="checkbox"
+    bind:checked
+    {disabled}
+    class="checkbox"
+    on:change
+  />
   {#if label}
     <label for={id} class="label">{label}</label>
   {/if}

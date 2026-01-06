@@ -38,6 +38,7 @@
   } = $props();
 
   let description = $state('');
+  let isOptional = $state(false);
   let selectedMembers = $state<string[]>([]);
   let selectAll = $state(false);
 
@@ -51,6 +52,7 @@
   $effect(() => {
     if (expense) {
       description = expense.description;
+      isOptional = expense.isOptional;
       // Initialize selected members from current splits (excluding creator)
       const splitMemberIds = expense.splits
         .filter((s) => s.userId !== expense.creatorId)
@@ -266,6 +268,14 @@
               {/each}
             </div>
           </div>
+        </div>
+
+        <div class="form-group">
+          <Checkbox
+            name="isOptional"
+            bind:checked={isOptional}
+            label="Optional expense (people can choose to pay)"
+          />
         </div>
 
         <!-- Share change info -->
