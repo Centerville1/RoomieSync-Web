@@ -345,9 +345,7 @@ export const actions: Actions = {
     if (!description || description.trim() === '') {
       return fail(400, { error: 'Description is required' });
     }
-    if (!splitWith || splitWith.length === 0) {
-      return fail(400, { error: 'Must select at least one person to split with' });
-    }
+    // Note: splitWith can be empty - creator is always included in the split
 
     // Create expense
     const expenseId = generateId();

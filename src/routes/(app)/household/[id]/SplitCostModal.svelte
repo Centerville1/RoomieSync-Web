@@ -99,30 +99,34 @@
         />
       </div>
 
-      <div class="form-group">
-        <span class="form-label">Split with</span>
-        <div class="members-select">
-          <div class="select-all-option">
-            <Checkbox
-              bind:checked={selectAll}
-              on:change={handleSelectAllChange}
-              label="Everyone else"
-            />
-          </div>
-          <div class="members-checkboxes">
-            {#each members as member}
-              {@const isChecked = selectedMembers.includes(member.id)}
+      {#if members.length > 0}
+        <div class="form-group">
+          <span class="form-label">Split with</span>
+          <div class="members-select">
+            <div class="select-all-option">
               <Checkbox
-                name="splitWith"
-                value={member.id}
-                checked={isChecked}
-                on:change={() => toggleMember(member.id)}
-                label={getMemberDisplayName(member)}
+                bind:checked={selectAll}
+                on:change={handleSelectAllChange}
+                label="Everyone else"
               />
-            {/each}
+            </div>
+            <div class="members-checkboxes">
+              {#each members as member}
+                {@const isChecked = selectedMembers.includes(member.id)}
+                <Checkbox
+                  name="splitWith"
+                  value={member.id}
+                  checked={isChecked}
+                  on:change={() => toggleMember(member.id)}
+                  label={getMemberDisplayName(member)}
+                />
+              {/each}
+            </div>
           </div>
         </div>
-      </div>
+      {:else}
+        <p class="solo-notice">You're the only member. This expense will be tracked for your records.</p>
+      {/if}
 
       <div class="form-group">
         <Checkbox
@@ -168,5 +172,11 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-sm);
+  }
+
+  .solo-notice {
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+    margin: var(--space-md) 0;
   }
 </style>
