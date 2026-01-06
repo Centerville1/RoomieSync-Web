@@ -467,16 +467,24 @@
     cursor: pointer;
   }
 
-  .grid-row.selectable:hover .grid-cell {
+  .grid-row.selectable:not(.selected):hover .grid-cell {
     background-color: rgba(239, 68, 68, 0.15);
   }
 
-  .grid-row.selectable:hover .grid-cell.needs-to-pay-accent {
+  .grid-row.selectable:not(.selected):hover .grid-cell.needs-to-pay-accent {
     background-color: rgba(239, 68, 68, 0.5);
   }
 
   .grid-row.selected .grid-cell {
     background-color: rgba(239, 68, 68, 0.25);
+  }
+
+  .grid-row.selected:hover .grid-cell {
+    background-color: rgba(239, 68, 68, 0.35);
+  }
+
+  .grid-row.selected:hover .grid-cell.creator {
+    background-color: rgba(239, 68, 68, 0.45);
   }
 
   .grid-row.selected .grid-cell.creator {
