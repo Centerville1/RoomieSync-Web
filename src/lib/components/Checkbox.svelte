@@ -3,10 +3,12 @@
   export let label = '';
   export let disabled = false;
   export let id = '';
+  export let name = '';
+  export let value = '';
 </script>
 
 <div class="checkbox-group">
-  <input {id} type="checkbox" bind:checked {disabled} class="checkbox" on:change />
+  <input {id} {name} {value} type="checkbox" bind:checked {disabled} class="checkbox" on:change />
   {#if label}
     <label for={id} class="label">{label}</label>
   {/if}

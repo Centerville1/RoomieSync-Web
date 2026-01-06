@@ -48,6 +48,7 @@ export const householdMembers = sqliteTable('household_members', {
   role: text('role', { enum: ['admin', 'member'] })
     .notNull()
     .default('member'),
+  displayName: text('display_name'), // Optional per-household display name (falls back to user.name)
   joinedAt: integer('joined_at', { mode: 'timestamp' }).notNull()
 });
 

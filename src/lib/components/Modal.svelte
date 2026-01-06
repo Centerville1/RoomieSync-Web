@@ -1,10 +1,22 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import type { Snippet } from 'svelte';
 
-  export let open = false;
-  export let title = '';
-  export let size: 'sm' | 'md' | 'lg' | 'xl' = 'md';
-  export let showClose = true;
+  let {
+    open = $bindable(false),
+    title = '',
+    size = 'md' as 'sm' | 'md' | 'lg' | 'xl',
+    showClose = true,
+    children,
+    footer
+  }: {
+    open?: boolean;
+    title?: string;
+    size?: 'sm' | 'md' | 'lg' | 'xl';
+    showClose?: boolean;
+    children?: Snippet;
+    footer?: Snippet;
+  } = $props();
 
   function handleEscape(e: KeyboardEvent) {
     if (e.key === 'Escape' && open) {
@@ -23,13 +35,15 @@
     return () => document.removeEventListener('keydown', handleEscape);
   });
 
-  $: if (typeof document !== 'undefined') {
-    if (open) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
+  $effect(() => {
+    if (typeof document !== 'undefined') {
+      if (open) {
+        document.body.style.overflow = 'hidden';
+      } else {
+        document.body.style.overflow = '';
+      }
     }
-  }
+  });
 </script>
 
 {#if open}
@@ -46,11 +60,11 @@
         {/if}
       </div>
       <div class="modal-body">
-        <slot />
+        {@render children?.()}
       </div>
-      {#if $$slots.footer}
+      {#if footer}
         <div class="modal-footer">
-          <slot name="footer" />
+          {@render footer()}
         </div>
       {/if}
     </div>

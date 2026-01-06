@@ -43,6 +43,44 @@
 
   <main class="container">
     {#if data.user}
+      <!-- Pending Invites Section -->
+      {#if data.pendingInvites && data.pendingInvites.length > 0}
+        <section class="invites-section">
+          <h2>Pending Invites</h2>
+          <div class="invites-list">
+            {#each data.pendingInvites as invite}
+              <Card padding="lg">
+                <div class="invite-card">
+                  <div class="invite-info">
+                    {#if invite.householdImageUrl}
+                      <img
+                        src={invite.householdImageUrl}
+                        alt={invite.householdName}
+                        class="invite-image"
+                      />
+                    {/if}
+                    <div>
+                      <h3>{invite.householdName}</h3>
+                      <p class="invite-text">You've been invited to join this household</p>
+                    </div>
+                  </div>
+                  <div class="invite-actions">
+                    <form method="POST" action="?/acceptInvite">
+                      <input type="hidden" name="inviteId" value={invite.id} />
+                      <Button type="submit" variant="primary">Accept</Button>
+                    </form>
+                    <form method="POST" action="?/declineInvite">
+                      <input type="hidden" name="inviteId" value={invite.id} />
+                      <Button type="submit" variant="outline">Decline</Button>
+                    </form>
+                  </div>
+                </div>
+              </Card>
+            {/each}
+          </div>
+        </section>
+      {/if}
+
       <section class="welcome-section">
         <h1>Your Households</h1>
         <p>Manage your shared expenses across all your households.</p>
@@ -230,6 +268,62 @@
   .features p {
     margin: 0;
     color: var(--color-text-secondary);
+  }
+
+  .invites-section {
+    margin-bottom: var(--space-2xl);
+  }
+
+  .invites-section h2 {
+    margin-bottom: var(--space-lg);
+    font-size: 1.5rem;
+    color: var(--color-text-primary);
+  }
+
+  .invites-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+
+  .invite-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-lg);
+    flex-wrap: wrap;
+  }
+
+  .invite-info {
+    display: flex;
+    gap: var(--space-md);
+    align-items: center;
+    flex: 1;
+  }
+
+  .invite-image {
+    width: 3rem;
+    height: 3rem;
+    object-fit: cover;
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-tertiary);
+  }
+
+  .invite-info h3 {
+    margin: 0 0 var(--space-xs) 0;
+    font-size: 1.125rem;
+    color: var(--color-text-primary);
+  }
+
+  .invite-text {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+  }
+
+  .invite-actions {
+    display: flex;
+    gap: var(--space-sm);
   }
 
   .welcome-section {

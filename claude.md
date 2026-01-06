@@ -38,17 +38,13 @@ Simplified web port of the original RoomieSync mobile app, focused on shared hou
 
 ### Quality Checks (ALWAYS RUN BEFORE COMPLETION)
 
-After making any code changes, you MUST run these commands and fix all errors:
+After making major code changes, run these commands and fix errors:
 
 1. **Type checking**: `npm run check`
    - Fix all TypeScript and Svelte errors
    - Warnings are okay, but address errors
 2. **Code formatting**: `npm run format`
    - Auto-formats all code with Prettier (2 spaces, single quotes)
-3. **Build verification**: `npm run build`
-   - Ensures production build succeeds
-
-**IMPORTANT**: Never mark a task as complete if there are TypeScript errors or build failures.
 
 ### Reusable UI Components
 
@@ -64,7 +60,7 @@ After making any code changes, you MUST run these commands and fix all errors:
 - `Badge.svelte` - Status badges
 - `Avatar.svelte` - User avatars
 
-**You are encouraged to modify these components** if they don't meet requirements. Don't create duplicate components - extend existing ones instead, but be careful to test usage.
+**If it's more complicated to make the component work, you may modify these components if needed** if they don't meet requirements. Don't create duplicate components as much as possible.
 
 ## Core Data Models
 

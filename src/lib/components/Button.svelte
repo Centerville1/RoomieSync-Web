@@ -4,11 +4,13 @@
   export let type: 'button' | 'submit' | 'reset' = 'button';
   export let disabled = false;
   export let fullWidth = false;
+  export let form: string | undefined = undefined;
 </script>
 
 <button
   {type}
   {disabled}
+  {form}
   class="btn btn-{variant} btn-{size}"
   class:full-width={fullWidth}
   on:click

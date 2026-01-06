@@ -1,0 +1,682 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+
+  type Member = {
+    id: string;
+    name: string;
+    displayName: string | null;
+  };
+
+  type Split = {
+    userId: string;
+    hasPaid: boolean;
+    paidAt: Date | null;
+  };
+
+  type Expense = {
+    id: string;
+    description: string;
+    amount: number;
+    isOptional: boolean;
+    creatorId: string;
+    createdAt: Date;
+    splits: Split[];
+  };
+
+  type MemberBalance = {
+    owesYou: number;
+    owesYouOptional: number;
+    youOwe: number;
+    youOweOptional: number;
+  };
+
+  type Props = {
+    members?: Member[];
+    expenses?: Expense[];
+    onLoadMore?: () => Promise<void>;
+    hasMore?: boolean;
+    currentUserId?: string;
+    selectedExpenseIds?: Set<string>;
+    onSelectionChange?: (selectedIds: Set<string>) => void;
+    memberBalances?: Record<string, MemberBalance>;
+    onEditExpense?: (expense: Expense) => void;
+    onDeleteExpense?: (expense: Expense) => void;
+  };
+
+  let {
+    members = [],
+    expenses = [],
+    onLoadMore,
+    hasMore = false,
+    currentUserId,
+    selectedExpenseIds = new Set(),
+    onSelectionChange,
+    memberBalances = {},
+    onEditExpense,
+    onDeleteExpense
+  }: Props = $props();
+
+  // Sort members to show current user first
+  const sortedMembers = $derived(
+    [...members].sort((a, b) => {
+      if (a.id === currentUserId) return -1;
+      if (b.id === currentUserId) return 1;
+      return 0;
+    })
+  );
+
+  let scrollContainer: HTMLDivElement;
+  let isLoadingMore = $state(false);
+
+  function getMemberDisplayName(member: Member) {
+    return member.displayName || member.name;
+  }
+
+  function formatCurrency(amount: number) {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount);
+  }
+
+  function formatDateTime(date: Date) {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    }).format(new Date(date));
+  }
+
+  function formatShortDateTime(date: Date) {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    }).format(new Date(date));
+  }
+
+  function getUserShare(expense: Expense): number {
+    return expense.amount / expense.splits.length;
+  }
+
+  function getPaymentStatus(
+    expense: Expense,
+    memberId: string
+  ): 'paid' | 'unpaid' | 'not-included' | 'creator' {
+    if (expense.creatorId === memberId) {
+      return 'creator';
+    }
+    const split = expense.splits.find((s) => s.userId === memberId);
+    if (!split) {
+      return 'not-included';
+    }
+    return split.hasPaid ? 'paid' : 'unpaid';
+  }
+
+  function isSelectableByCurrentUser(expense: Expense): boolean {
+    if (!currentUserId) return false;
+    // Can't select expenses I created
+    if (expense.creatorId === currentUserId) return false;
+    // Can only select if I'm in the split and haven't paid yet
+    const mySplit = expense.splits.find((s) => s.userId === currentUserId);
+    return mySplit !== undefined && !mySplit.hasPaid;
+  }
+
+  function toggleExpenseSelection(expenseId: string) {
+    if (!onSelectionChange) return;
+    const newSelection = new Set(selectedExpenseIds);
+    if (newSelection.has(expenseId)) {
+      newSelection.delete(expenseId);
+    } else {
+      newSelection.add(expenseId);
+    }
+    onSelectionChange(newSelection);
+  }
+
+  async function handleScroll() {
+    if (!scrollContainer || !onLoadMore || !hasMore || isLoadingMore) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+    // Load more when user scrolls within 100px of the bottom
+    if (scrollHeight - scrollTop - clientHeight < 100) {
+      isLoadingMore = true;
+      try {
+        await onLoadMore();
+      } finally {
+        isLoadingMore = false;
+      }
+    }
+  }
+
+  onMount(() => {
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', handleScroll);
+      return () => scrollContainer.removeEventListener('scroll', handleScroll);
+    }
+  });
+</script>
+
+<div class="expense-grid-wrapper">
+  <!-- Sticky header -->
+  <div class="grid-header" style="--member-count: {sortedMembers.length}">
+    {#each sortedMembers as member}
+      {@const isCurrentUser = member.id === currentUserId}
+      {@const balance = memberBalances[member.id]}
+      <div class="member-header" class:current-user={isCurrentUser}>
+        <span class="member-name">
+          {getMemberDisplayName(member)}{#if isCurrentUser}
+            (You){/if}
+        </span>
+        {#if !isCurrentUser && balance}
+          {@const hasOwesYou = balance.owesYou > 0 || balance.owesYouOptional > 0}
+          {@const hasYouOwe = balance.youOwe > 0 || balance.youOweOptional > 0}
+          <div class="member-balance">
+            <div class="balance-items">
+              {#if hasOwesYou}
+                <span class="owes-you">Owes you: {formatCurrency(balance.owesYou)}</span>
+                {#if balance.owesYouOptional > 0}
+                  <span class="balance-optional"
+                    ><span class="optional-badge">Optional</span>
+                    {formatCurrency(balance.owesYouOptional)}</span
+                  >
+                {/if}
+              {/if}
+              {#if hasYouOwe}
+                <span class="you-owe">You owe: {formatCurrency(balance.youOwe)}</span>
+                {#if balance.youOweOptional > 0}
+                  <span class="balance-optional"
+                    ><span class="optional-badge">Optional</span>
+                    {formatCurrency(balance.youOweOptional)}</span
+                  >
+                {/if}
+              {/if}
+              {#if !hasOwesYou && !hasYouOwe}
+                <span class="settled">Settled up</span>
+              {/if}
+            </div>
+          </div>
+        {/if}
+      </div>
+    {/each}
+  </div>
+
+  <!-- Scrollable body -->
+  <div class="scroll-container" bind:this={scrollContainer}>
+    <div class="expense-grid" style="--member-count: {sortedMembers.length}">
+      {#each expenses as expense}
+        {@const isSelectable = isSelectableByCurrentUser(expense)}
+        {@const isSelected = selectedExpenseIds.has(expense.id)}
+        {@const needsToPay = isSelectable && !expense.isOptional}
+        <div
+          class="grid-row"
+          class:selectable={isSelectable}
+          class:selected={isSelected}
+          class:needs-to-pay={needsToPay}
+          onclick={isSelectable ? () => toggleExpenseSelection(expense.id) : undefined}
+          onkeydown={isSelectable
+            ? (e) => e.key === 'Enter' && toggleExpenseSelection(expense.id)
+            : undefined}
+          role={isSelectable ? 'button' : undefined}
+          tabindex={isSelectable ? 0 : undefined}
+        >
+          {#each sortedMembers as member}
+            {@const status = getPaymentStatus(expense, member.id)}
+            {@const isMyExpense = expense.creatorId === currentUserId}
+            {@const isCreatorCell = status === 'creator'}
+            {@const isMyColumn = member.id === currentUserId}
+            <div
+              class="grid-cell"
+              class:creator={isCreatorCell}
+              class:selected={isSelected && isCreatorCell}
+              class:needs-to-pay={needsToPay}
+              class:needs-to-pay-accent={needsToPay && isCreatorCell}
+              class:first-column={isMyColumn}
+            >
+              {#if isCreatorCell}
+                <div class="expense-cell-content">
+                  {#if isMyExpense}
+                    <div class="expense-actions">
+                      <button
+                        type="button"
+                        class="action-btn edit-btn"
+                        title="Edit expense"
+                        onclick={(e) => {
+                          e.stopPropagation();
+                          onEditExpense?.(expense);
+                        }}
+                      >
+                        ✎
+                      </button>
+                      <button
+                        type="button"
+                        class="action-btn delete-btn"
+                        title="Delete expense"
+                        onclick={(e) => {
+                          e.stopPropagation();
+                          onDeleteExpense?.(expense);
+                        }}
+                      >
+                        🗑
+                      </button>
+                    </div>
+                  {/if}
+                  <div class="expense-info">
+                    <span class="expense-description">
+                      {expense.description} - {formatDateTime(expense.createdAt)}
+                      {#if expense.isOptional}
+                        <span class="optional-badge">Optional</span>
+                      {/if}
+                    </span>
+                    <span
+                      class="expense-amount"
+                      class:my-expense={isMyExpense}
+                      class:other-expense={!isMyExpense}
+                    >
+                      {formatCurrency(expense.amount)}
+                    </span>
+                  </div>
+                </div>
+              {:else if status === 'paid'}
+                {@const split = expense.splits.find((s) => s.userId === member.id)}
+                {@const paidAt = split?.paidAt}
+                <div class="paid-status">
+                  <span class="status-icon paid" title="Paid">✓</span>
+                  {#if isMyExpense && paidAt}
+                    <span class="paid-info">
+                      Paid you {formatCurrency(getUserShare(expense))}
+                      <span class="paid-date">{formatShortDateTime(paidAt)}</span>
+                    </span>
+                  {:else if isMyColumn && paidAt}
+                    <span class="paid-info you-paid">
+                      You paid {formatCurrency(getUserShare(expense))}
+                      <span class="paid-date">{formatShortDateTime(paidAt)}</span>
+                    </span>
+                  {/if}
+                </div>
+              {:else if status === 'unpaid'}
+                {#if expense.isOptional}
+                  <div class="optional-status">
+                    <span class="status-icon optional" title="Optional - Unpaid">?</span>
+                    <span class="optional-amount"
+                      ><span class="optional-badge">Optional</span>
+                      {formatCurrency(getUserShare(expense))}</span
+                    >
+                  </div>
+                {:else}
+                  <div class="unpaid-status">
+                    <span class="status-icon unpaid" class:other-column={!isMyColumn} title="Unpaid"
+                      >☐</span
+                    >
+                    {#if isMyExpense}
+                      <span class="owes-info">Owes you {formatCurrency(getUserShare(expense))}</span
+                      >
+                    {:else if isMyColumn}
+                      <span class="you-owe-info"
+                        >You owe {formatCurrency(getUserShare(expense))}</span
+                      >
+                    {/if}
+                  </div>
+                {/if}
+              {:else}
+                <span class="status-icon not-included" title="Not included">—</span>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {/each}
+
+      {#if expenses.length === 0}
+        <div class="empty-state">No expenses yet</div>
+      {/if}
+
+      {#if isLoadingMore}
+        <div class="loading-more">Loading more...</div>
+      {/if}
+    </div>
+  </div>
+</div>
+
+<style>
+  .expense-grid-wrapper {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background-color: var(--color-bg-primary);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    max-height: 500px;
+    margin-bottom: var(--space-lg);
+  }
+
+  .grid-header {
+    display: grid;
+    grid-template-columns: repeat(var(--member-count), minmax(150px, 1fr));
+    min-width: max-content;
+    flex-shrink: 0;
+    background-color: var(--color-bg-tertiary);
+    border-bottom: 2px solid var(--color-border);
+  }
+
+  .member-header {
+    padding: var(--space-md);
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    justify-content: center;
+  }
+
+  .member-header.current-user {
+    background-color: var(--color-bg-secondary);
+  }
+
+  .member-name {
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  .member-balance {
+    display: flex;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 500;
+  }
+
+  .balance-items {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .member-balance .owes-you {
+    color: var(--color-success);
+  }
+
+  .member-balance .you-owe {
+    color: var(--color-error);
+  }
+
+  .member-balance .balance-optional {
+    color: var(--color-secondary, #6b7fff);
+    font-size: 0.625rem;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding-left: var(--space-md);
+  }
+
+  .member-balance .balance-optional .optional-badge {
+    margin-left: 0;
+    background-color: rgba(107, 127, 255, 0.15);
+    color: var(--color-secondary, #6b7fff);
+  }
+
+  .member-balance .settled {
+    color: var(--color-text-tertiary);
+  }
+
+  .scroll-container {
+    overflow: auto;
+    flex: 1;
+  }
+
+  .expense-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--member-count), minmax(150px, 1fr));
+    min-width: max-content;
+  }
+
+  .grid-row {
+    display: contents;
+  }
+
+  .grid-cell {
+    padding: var(--space-md);
+    border-bottom: 1px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60px;
+    transition:
+      background-color 0.15s ease,
+      outline 0.15s ease;
+  }
+
+  .grid-cell.creator {
+    background-color: var(--color-bg-secondary);
+  }
+
+  .grid-cell.first-column {
+    border-right: 3px solid rgba(255, 255, 255, 0.6);
+  }
+
+  .grid-row.selectable .grid-cell {
+    cursor: pointer;
+  }
+
+  .grid-row.selectable:hover .grid-cell {
+    background-color: rgba(239, 68, 68, 0.15);
+  }
+
+  .grid-row.selectable:hover .grid-cell.needs-to-pay-accent {
+    background-color: rgba(239, 68, 68, 0.5);
+  }
+
+  .grid-cell.selected {
+    background-color: var(--color-bg-tertiary);
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+  }
+
+  .grid-cell.needs-to-pay {
+    background-color: rgba(239, 68, 68, 0.04);
+  }
+
+  .grid-cell.needs-to-pay.first-column {
+    border-left: 3px solid var(--color-error, #ef4444);
+  }
+
+  .grid-cell.needs-to-pay-accent {
+    background-color: rgba(239, 68, 68, 0.4);
+  }
+
+  .expense-cell-content {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding-right: var(--space-sm);
+    padding-left: var(--space-sm);
+  }
+
+  .expense-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    text-align: center;
+    max-width: calc(100% - 60px);
+  }
+
+  .expense-actions {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .action-btn {
+    background: none;
+    border: none;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color 0.15s ease;
+    line-height: 1;
+  }
+
+  .action-btn:hover {
+    background-color: var(--color-bg-tertiary);
+  }
+
+  .action-btn.edit-btn {
+    color: var(--color-success);
+  }
+
+  .action-btn.edit-btn:hover {
+    background-color: rgba(34, 197, 94, 0.15);
+  }
+
+  .action-btn.delete-btn {
+    color: var(--color-error);
+  }
+
+  .action-btn.delete-btn:hover {
+    background-color: rgba(239, 68, 68, 0.15);
+  }
+
+  .expense-description {
+    font-size: 0.875rem;
+    color: var(--color-text-primary);
+    font-weight: 500;
+  }
+
+  .optional-badge {
+    font-size: 0.625rem;
+    padding: 2px 6px;
+    background-color: var(--color-bg-tertiary);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-secondary);
+    margin-left: var(--space-xs);
+  }
+
+  .expense-amount {
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .expense-amount.my-expense {
+    color: var(--color-success, #22c55e);
+  }
+
+  .expense-amount.other-expense {
+    color: var(--color-error, #ef4444);
+  }
+
+  .status-icon {
+    font-size: 1.25rem;
+    width: 2rem;
+    height: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-md);
+  }
+
+  .status-icon.paid {
+    color: var(--color-success);
+    background-color: rgba(34, 197, 94, 0.1);
+  }
+
+  .paid-status {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+
+  .paid-info {
+    font-size: 0.7rem;
+    color: var(--color-success);
+    font-weight: 500;
+    text-align: center;
+    line-height: 1.3;
+  }
+
+  .paid-date {
+    display: block;
+    color: var(--color-text-tertiary);
+    font-weight: 400;
+  }
+
+  .unpaid-status {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+
+  .owes-info {
+    font-size: 0.7rem;
+    color: var(--color-success);
+    font-weight: 500;
+    text-align: center;
+  }
+
+  .you-owe-info {
+    font-size: 0.7rem;
+    color: var(--color-warning, #f59e0b);
+    font-weight: 500;
+    text-align: center;
+  }
+
+  .status-icon.unpaid {
+    color: var(--color-warning, #f59e0b);
+    background-color: rgba(245, 158, 11, 0.1);
+  }
+
+  .status-icon.unpaid.other-column {
+    color: var(--color-text-tertiary);
+    background-color: var(--color-bg-tertiary);
+  }
+
+  .status-icon.optional {
+    color: var(--color-secondary, #6b7fff);
+    background-color: rgba(107, 127, 255, 0.1);
+  }
+
+  .optional-status {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+
+  .optional-amount {
+    font-size: 0.7rem;
+    color: var(--color-secondary, #6b7fff);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .optional-amount .optional-badge {
+    background-color: rgba(107, 127, 255, 0.15);
+    color: var(--color-secondary, #6b7fff);
+  }
+
+  .status-icon.not-included {
+    color: var(--color-text-tertiary);
+    background-color: transparent;
+  }
+
+  .empty-state,
+  .loading-more {
+    grid-column: 1 / -1;
+    padding: var(--space-xl);
+    text-align: center;
+    color: var(--color-text-tertiary);
+  }
+
+  .loading-more {
+    padding: var(--space-md);
+    font-size: 0.875rem;
+  }
+</style>

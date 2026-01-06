@@ -8,6 +8,10 @@
   export let required = false;
   export let id = '';
   export let name = '';
+  // Number-specific props
+  export let min: number | string | undefined = undefined;
+  export let max: number | string | undefined = undefined;
+  export let step: number | string | undefined = undefined;
 </script>
 
 <div class="input-group">
@@ -23,6 +27,9 @@
     {placeholder}
     {disabled}
     {required}
+    {min}
+    {max}
+    {step}
     bind:value
     class="input"
     class:error

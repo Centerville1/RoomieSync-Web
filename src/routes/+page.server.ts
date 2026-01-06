@@ -1,13 +1,13 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { db } from '$lib/server/db/client';
-import { households, householdMembers } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { households, householdMembers, invites } from '$lib/server/db/schema';
+import { eq, and } from 'drizzle-orm';
 import { generateId } from '$lib/server/utils';
 
 export const load: PageServerLoad = async ({ locals }) => {
   if (!locals.user) {
-    return { households: [] };
+    return { households: [], pendingInvites: [] };
   }
 
   // Fetch user's households
@@ -26,8 +26,22 @@ export const load: PageServerLoad = async ({ locals }) => {
     .innerJoin(householdMembers, eq(households.id, householdMembers.householdId))
     .where(eq(householdMembers.userId, locals.user.id));
 
+  // Fetch pending invites for user's email
+  const pendingInvites = await db
+    .select({
+      id: invites.id,
+      householdId: invites.householdId,
+      householdName: households.name,
+      householdImageUrl: households.imageUrl,
+      createdAt: invites.createdAt
+    })
+    .from(invites)
+    .innerJoin(households, eq(invites.householdId, households.id))
+    .where(and(eq(invites.invitedEmail, locals.user.email), eq(invites.used, false)));
+
   return {
-    households: userHouseholds
+    households: userHouseholds,
+    pendingInvites
   };
 };
 
@@ -84,5 +98,101 @@ export const actions: Actions = {
         error: 'Failed to create household. Please try again.'
       });
     }
+  },
+
+  acceptInvite: async ({ request, locals }) => {
+    if (!locals.user) {
+      throw redirect(302, '/login');
+    }
+
+    const formData = await request.formData();
+    const inviteId = formData.get('inviteId') as string;
+
+    if (!inviteId) {
+      return fail(400, { error: 'Invalid invite' });
+    }
+
+    // Fetch the invite
+    const invite = await db
+      .select()
+      .from(invites)
+      .where(and(eq(invites.id, inviteId), eq(invites.invitedEmail, locals.user.email)))
+      .limit(1);
+
+    if (invite.length === 0) {
+      return fail(404, { error: 'Invite not found' });
+    }
+
+    if (invite[0].used) {
+      return fail(400, { error: 'This invite has already been used' });
+    }
+
+    const householdId = invite[0].householdId;
+
+    // Check if user is already a member
+    const existingMember = await db
+      .select()
+      .from(householdMembers)
+      .where(
+        and(
+          eq(householdMembers.householdId, householdId),
+          eq(householdMembers.userId, locals.user.id)
+        )
+      )
+      .limit(1);
+
+    if (existingMember.length > 0) {
+      return fail(400, { error: 'You are already a member of this household' });
+    }
+
+    // Add user to household
+    await db.insert(householdMembers).values({
+      id: generateId(),
+      householdId,
+      userId: locals.user.id,
+      role: 'member',
+      joinedAt: new Date()
+    });
+
+    // Mark invite as used
+    await db
+      .update(invites)
+      .set({ used: true, usedAt: new Date() })
+      .where(eq(invites.id, inviteId));
+
+    // Redirect to the household
+    throw redirect(302, `/household/${householdId}`);
+  },
+
+  declineInvite: async ({ request, locals }) => {
+    if (!locals.user) {
+      throw redirect(302, '/login');
+    }
+
+    const formData = await request.formData();
+    const inviteId = formData.get('inviteId') as string;
+
+    if (!inviteId) {
+      return fail(400, { error: 'Invalid invite' });
+    }
+
+    // Verify invite belongs to user
+    const invite = await db
+      .select()
+      .from(invites)
+      .where(and(eq(invites.id, inviteId), eq(invites.invitedEmail, locals.user.email)))
+      .limit(1);
+
+    if (invite.length === 0) {
+      return fail(404, { error: 'Invite not found' });
+    }
+
+    // Mark invite as used (declined)
+    await db
+      .update(invites)
+      .set({ used: true, usedAt: new Date() })
+      .where(eq(invites.id, inviteId));
+
+    return { success: true };
   }
 };

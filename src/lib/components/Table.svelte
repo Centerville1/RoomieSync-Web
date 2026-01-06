@@ -6,6 +6,8 @@
     label: string;
     sortable?: boolean;
     render?: (item: T) => string;
+    cellClass?: (item: T) => string;
+    cellColor?: (item: T) => 'danger' | 'success' | 'warning' | 'primary' | 'secondary' | undefined;
     component?: ComponentType;
   };
 
@@ -68,7 +70,8 @@
       {#each sortedData() as item, i}
         <tr>
           {#each columns as column}
-            <td>
+            {@const colorClass = column.cellColor ? `cell-${column.cellColor(item)}` : ''}
+            <td class="{column.cellClass ? column.cellClass(item) : ''} {colorClass}">
               {#if column.component}
                 {@const Component = column.component}
                 <Component {item} />
@@ -91,6 +94,7 @@
     overflow-x: auto;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
+    margin-bottom: var(--space-lg);
   }
 
   .table {
@@ -149,5 +153,31 @@
   .sort-icon {
     color: var(--color-secondary);
     font-size: 0.875rem;
+  }
+
+  /* Cell color utilities */
+  td.cell-danger {
+    color: var(--color-danger, #dc2626);
+    font-weight: 600;
+  }
+
+  td.cell-success {
+    color: var(--color-success, #16a34a);
+    font-weight: 600;
+  }
+
+  td.cell-warning {
+    color: var(--color-warning, #f59e0b);
+    font-weight: 600;
+  }
+
+  td.cell-primary {
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+
+  td.cell-secondary {
+    color: var(--color-secondary);
+    font-weight: 600;
   }
 </style>

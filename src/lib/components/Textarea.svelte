@@ -7,6 +7,7 @@
   export let required = false;
   export let rows = 4;
   export let id = '';
+  export let name = '';
 </script>
 
 <div class="textarea-group">
@@ -17,6 +18,7 @@
   {/if}
   <textarea
     {id}
+    {name}
     {placeholder}
     {disabled}
     {required}
