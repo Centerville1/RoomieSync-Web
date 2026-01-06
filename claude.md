@@ -29,9 +29,42 @@ Simplified web port of the original RoomieSync mobile app, focused on shared hou
 ### Theming System
 
 - CSS custom properties for color palettes and theme modes
+- Default app colors: Orange (`#FF7A4D`) and Purple (`#6B7FFF`)
 - Household-specific color schemes that override app theme when viewing that household
 - Architecture supports future custom comprehensive theming (color picker)
 - Reference implementation: [matt-jones-website](https://github.com/Centerville1/matt-jones-website)
+
+## Development Workflow
+
+### Quality Checks (ALWAYS RUN BEFORE COMPLETION)
+
+After making any code changes, you MUST run these commands and fix all errors:
+
+1. **Type checking**: `npm run check`
+   - Fix all TypeScript and Svelte errors
+   - Warnings are okay, but address errors
+2. **Code formatting**: `npm run format`
+   - Auto-formats all code with Prettier (2 spaces, single quotes)
+3. **Build verification**: `npm run build`
+   - Ensures production build succeeds
+
+**IMPORTANT**: Never mark a task as complete if there are TypeScript errors or build failures.
+
+### Reusable UI Components
+
+**ALWAYS use the components in `src/lib/components/`** for consistency:
+
+- `Button.svelte` - Buttons with variants (primary, secondary, outline, ghost, danger)
+- `Card.svelte` - Container cards with hover effects
+- `Input.svelte` - Text inputs with labels and validation
+- `Textarea.svelte` - Multi-line text inputs
+- `Checkbox.svelte` - Custom checkboxes
+- `Modal.svelte` - Accessible modals
+- `Table.svelte` - Sortable tables
+- `Badge.svelte` - Status badges
+- `Avatar.svelte` - User avatars
+
+**You are encouraged to modify these components** if they don't meet requirements. Don't create duplicate components - extend existing ones instead, but be careful to test usage.
 
 ## Core Data Models
 
