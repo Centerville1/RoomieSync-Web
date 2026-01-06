@@ -23,10 +23,12 @@
     return () => document.removeEventListener('keydown', handleEscape);
   });
 
-  $: if (open) {
-    document.body.style.overflow = 'hidden';
-  } else {
-    document.body.style.overflow = '';
+  $: if (typeof document !== 'undefined') {
+    if (open) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
   }
 </script>
 

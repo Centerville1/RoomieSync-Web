@@ -5,13 +5,7 @@ import { db } from '$lib/server/db/client';
 import { users } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { hash } from '@node-rs/argon2';
-
-// Generate random ID
-function generateId(): string {
-  const timestamp = Date.now().toString(36);
-  const randomPart = Math.random().toString(36).substring(2, 15);
-  return `${timestamp}${randomPart}`;
-}
+import { generateId } from '$lib/server/utils';
 
 export const load: PageServerLoad = async ({ locals }) => {
   if (locals.user) {

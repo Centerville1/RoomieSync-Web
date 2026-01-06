@@ -34,7 +34,7 @@
           required
         />
 
-        <Button type="submit" variant="primary" fullWidth size="lg">Sign In</Button>
+        <Button type="submit" variant="secondary" fullWidth size="lg">Sign In</Button>
       </form>
 
       <p class="auth-footer">
@@ -101,7 +101,7 @@
   }
 
   .auth-footer a {
-    color: var(--color-secondary);
+    color: var(--color-primary);
     font-weight: 600;
     text-decoration: none;
   }

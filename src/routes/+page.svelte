@@ -2,8 +2,18 @@
   import type { PageData } from './$types';
   import Button from '$lib/components/Button.svelte';
   import Card from '$lib/components/Card.svelte';
+  import Modal from '$lib/components/Modal.svelte';
+  import Input from '$lib/components/Input.svelte';
 
   let { data }: { data: PageData } = $props();
+
+  let showCreateModal = $state(false);
+  let householdName = $state('');
+  let isSubmitting = $state(false);
+
+  function handleCreateClick() {
+    showCreateModal = true;
+  }
 </script>
 
 <div class="home-container">
@@ -36,13 +46,37 @@
       <section class="welcome-section">
         <h1>Your Households</h1>
         <p>Manage your shared expenses across all your households.</p>
-        <Button variant="primary" size="lg">Create New Household</Button>
+        <Button variant="primary" size="lg" on:click={handleCreateClick}
+          >Create New Household</Button
+        >
       </section>
 
-      <!-- This will be populated with household list and invites -->
-      <Card padding="lg">
-        <p class="placeholder">Your households will appear here.</p>
-      </Card>
+      <!-- Household list -->
+      {#if data.households && data.households.length > 0}
+        <div class="households-grid">
+          {#each data.households as household}
+            <a href="/household/{household.id}" class="household-card-link">
+              <Card padding="lg" hover>
+                <div class="household-card">
+                  {#if household.imageUrl}
+                    <img src={household.imageUrl} alt={household.name} class="household-image" />
+                  {/if}
+                  <div class="household-info">
+                    <h3>{household.name}</h3>
+                    <p class="household-role">
+                      {household.role === 'admin' ? 'Admin' : 'Member'}
+                    </p>
+                  </div>
+                </div>
+              </Card>
+            </a>
+          {/each}
+        </div>
+      {:else}
+        <Card padding="lg">
+          <p class="placeholder">Your households will appear here.</p>
+        </Card>
+      {/if}
     {:else}
       <section class="hero">
         <h1>Share Expenses with Your Roommates</h1>
@@ -76,6 +110,29 @@
     {/if}
   </main>
 </div>
+
+<!-- Create Household Modal -->
+<Modal bind:open={showCreateModal} title="Create New Household" size="md">
+  <form method="POST" action="?/createHousehold">
+    <Input
+      label="Household Name"
+      type="text"
+      name="name"
+      bind:value={householdName}
+      placeholder="e.g., Main Street Apartment"
+      required
+    />
+
+    <div class="form-actions">
+      <Button type="button" variant="outline" on:click={() => (showCreateModal = false)}>
+        Cancel
+      </Button>
+      <Button type="submit" variant="primary" disabled={isSubmitting || !householdName.trim()}>
+        {isSubmitting ? 'Creating...' : 'Create Household'}
+      </Button>
+    </div>
+  </form>
+</Modal>
 
 <style>
   .home-container {
@@ -195,6 +252,50 @@
 
   a {
     text-decoration: none;
+  }
+
+  .form-actions {
+    display: flex;
+    gap: var(--space-md);
+    justify-content: flex-end;
+    margin-top: var(--space-xl);
+  }
+
+  .households-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: var(--space-lg);
+  }
+
+  .household-card-link {
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .household-card {
+    display: flex;
+    gap: var(--space-md);
+    align-items: center;
+  }
+
+  .household-image {
+    width: 4rem;
+    height: 4rem;
+    object-fit: cover;
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-tertiary);
+  }
+
+  .household-info h3 {
+    margin: 0 0 var(--space-xs) 0;
+    font-size: 1.125rem;
+    color: var(--color-text-primary);
+  }
+
+  .household-role {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
   }
 
   @media (max-width: 768px) {
