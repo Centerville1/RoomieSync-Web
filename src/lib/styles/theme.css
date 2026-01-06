@@ -1,0 +1,79 @@
+/* Root theme variables */
+:root {
+	/* App-wide theme colors */
+	--color-primary: #4f46e5;
+	--color-primary-hover: #4338ca;
+	--color-secondary: #06b6d4;
+	--color-secondary-hover: #0891b2;
+
+	/* Background colors */
+	--color-bg-primary: #ffffff;
+	--color-bg-secondary: #f9fafb;
+	--color-bg-tertiary: #f3f4f6;
+
+	/* Text colors */
+	--color-text-primary: #111827;
+	--color-text-secondary: #6b7280;
+	--color-text-tertiary: #9ca3af;
+	--color-text-inverse: #ffffff;
+
+	/* Border colors */
+	--color-border: #e5e7eb;
+	--color-border-hover: #d1d5db;
+
+	/* Status colors */
+	--color-success: #10b981;
+	--color-error: #ef4444;
+	--color-warning: #f59e0b;
+	--color-info: #3b82f6;
+
+	/* Spacing scale */
+	--space-xs: 0.25rem;
+	--space-sm: 0.5rem;
+	--space-md: 1rem;
+	--space-lg: 1.5rem;
+	--space-xl: 2rem;
+	--space-2xl: 3rem;
+
+	/* Border radius */
+	--radius-sm: 0.25rem;
+	--radius-md: 0.5rem;
+	--radius-lg: 0.75rem;
+	--radius-xl: 1rem;
+
+	/* Shadows */
+	--shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+	--shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+	--shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+
+	/* Typography */
+	--font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+	--font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* Dark mode theme */
+@media (prefers-color-scheme: dark) {
+	:root {
+		--color-primary: #6366f1;
+		--color-primary-hover: #818cf8;
+		--color-secondary: #22d3ee;
+		--color-secondary-hover: #67e8f9;
+
+		--color-bg-primary: #111827;
+		--color-bg-secondary: #1f2937;
+		--color-bg-tertiary: #374151;
+
+		--color-text-primary: #f9fafb;
+		--color-text-secondary: #d1d5db;
+		--color-text-tertiary: #9ca3af;
+
+		--color-border: #374151;
+		--color-border-hover: #4b5563;
+	}
+}
+
+/* Household-specific theme override class */
+.household-theme {
+	/* These will be overridden dynamically via inline styles */
+	/* when viewing a specific household */
+}

@@ -2,18 +2,16 @@
 
 # dependencies
 /node_modules
-/.pnp
-.pnp.js
 
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
-# production
+# build output
+.svelte-kit
 /build
+/.svelte-kit
+/package
+.vercel
+.output
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
 
 # misc
 .DS_Store
@@ -25,12 +23,8 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
-.env*.local
 .env
+.env*.local
 
 # vercel
 .vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
