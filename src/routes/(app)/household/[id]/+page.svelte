@@ -9,6 +9,7 @@
   import PayExpensesModal from './PayExpensesModal.svelte';
   import EditExpenseModal from './EditExpenseModal.svelte';
   import DeleteExpenseModal from './DeleteExpenseModal.svelte';
+  import ImportExpenseModal from './ImportExpenseModal.svelte';
   import ExpenseGrid from './ExpenseGrid.svelte';
   import BalanceChart from './BalanceChart.svelte';
 
@@ -18,6 +19,8 @@
   let showPayExpensesModal = $state(false);
   let showEditExpenseModal = $state(false);
   let showDeleteExpenseModal = $state(false);
+  let showImportExpenseModal = $state(false);
+  let importExpenseDefaultCreatorId = $state('');
   let editingMemberId = $state<string | null>(null);
   let editDisplayName = $state('');
 
@@ -42,6 +45,11 @@
   function handleDeleteExpense(expense: Expense) {
     selectedExpenseForDelete = expense;
     showDeleteExpenseModal = true;
+  }
+
+  function handleImportExpense(memberId: string) {
+    importExpenseDefaultCreatorId = memberId;
+    showImportExpenseModal = true;
   }
 
   // Expense selection state
@@ -207,6 +215,8 @@
         onEditExpense={handleEditExpense}
         onDeleteExpense={handleDeleteExpense}
         onSplitCost={() => (showSplitCostModal = true)}
+        isAdmin={data.userRole === 'admin'}
+        onImportExpense={handleImportExpense}
       />
       <div class="pay-button-container">
         <Button
@@ -305,6 +315,15 @@
   members={data.members}
   currentUserId={data.currentUserId}
 />
+
+<!-- Import Expense Modal (Admin Only) -->
+{#if data.userRole === 'admin'}
+  <ImportExpenseModal
+    bind:open={showImportExpenseModal}
+    members={data.members}
+    defaultCreatorId={importExpenseDefaultCreatorId}
+  />
+{/if}
 
 <style>
   .household-container {

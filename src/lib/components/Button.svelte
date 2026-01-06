@@ -1,5 +1,6 @@
 <script lang="ts">
-  export let variant: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'success' = 'primary';
+  export let variant: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'success' =
+    'primary';
   export let size: 'sm' | 'md' | 'lg' = 'md';
   export let type: 'button' | 'submit' | 'reset' = 'button';
   export let disabled = false;

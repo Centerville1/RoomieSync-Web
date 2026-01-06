@@ -42,6 +42,8 @@
     onEditExpense?: (expense: Expense) => void;
     onDeleteExpense?: (expense: Expense) => void;
     onSplitCost?: () => void;
+    isAdmin?: boolean;
+    onImportExpense?: (memberId: string) => void;
   };
 
   let {
@@ -55,7 +57,9 @@
     memberBalances = {},
     onEditExpense,
     onDeleteExpense,
-    onSplitCost
+    onSplitCost,
+    isAdmin = false,
+    onImportExpense
   }: Props = $props();
 
   // Track hover state for the split cost row
@@ -226,10 +230,7 @@
           >
             {#each sortedMembers as member}
               {@const isCurrentUser = member.id === currentUserId}
-              <div
-                class="grid-cell split-cost-cell"
-                class:current-user-cell={isCurrentUser}
-              >
+              <div class="grid-cell split-cost-cell" class:current-user-cell={isCurrentUser}>
                 {#if isCurrentUser}
                   <div class="split-cost-content">
                     <img src="/icon-nobg.png" alt="" class="split-cost-logo" />
@@ -383,6 +384,24 @@
           <div class="loading-more">Loading more...</div>
         {/if}
       </div>
+
+      <!-- Import row at bottom (admin only) - inside grid-content to scroll horizontally -->
+      {#if isAdmin && onImportExpense}
+        <div class="import-row" style="--member-count: {sortedMembers.length}">
+          {#each sortedMembers as member}
+            <div class="import-cell">
+              <button
+                type="button"
+                class="import-btn"
+                title="Import expense for {getMemberDisplayName(member)}"
+                onclick={() => onImportExpense(member.id)}
+              >
+                +
+              </button>
+            </div>
+          {/each}
+        </div>
+      {/if}
     </div>
   </div>
 </div>
@@ -392,7 +411,7 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     background-color: var(--color-bg-primary);
-    max-height: 500px;
+    max-height: 70vh;
     margin-bottom: var(--space-lg);
     display: flex;
     flex-direction: column;
@@ -853,5 +872,48 @@
   .loading-more {
     padding: var(--space-md);
     font-size: 0.875rem;
+  }
+
+  /* Import row styles */
+  .import-row {
+    display: grid;
+    grid-template-columns: repeat(var(--member-count), minmax(150px, 1fr));
+    border-top: 2px solid var(--color-border);
+    background-color: var(--color-bg-tertiary);
+    min-width: max-content;
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+  }
+
+  .import-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-sm);
+    min-height: 48px;
+  }
+
+  .import-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px dashed var(--color-border);
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 1.25rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .import-btn:hover {
+    border-color: var(--color-secondary);
+    border-style: solid;
+    background-color: var(--color-secondary);
+    color: white;
   }
 </style>

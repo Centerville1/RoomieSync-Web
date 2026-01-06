@@ -753,5 +753,154 @@ export const actions: Actions = {
     await db.delete(expenses).where(eq(expenses.id, expenseId));
 
     return { success: true };
+  },
+
+  importExpense: async ({ request, locals, params }) => {
+    if (!locals.user) {
+      throw redirect(302, '/login');
+    }
+
+    const householdId = params.id;
+
+    // Verify user is an admin
+    const membership = await db
+      .select()
+      .from(householdMembers)
+      .where(
+        and(
+          eq(householdMembers.householdId, householdId),
+          eq(householdMembers.userId, locals.user.id)
+        )
+      )
+      .limit(1);
+
+    if (membership.length === 0) {
+      throw error(403, 'You are not a member of this household');
+    }
+
+    if (membership[0].role !== 'admin') {
+      throw error(403, 'Only admins can import expenses');
+    }
+
+    const formData = await request.formData();
+    const creatorId = formData.get('creatorId') as string;
+    const amount = parseFloat(formData.get('amount') as string);
+    const description = formData.get('description') as string;
+    const expenseDateStr = formData.get('expenseDate') as string;
+    const isOptional = formData.get('isOptional') === 'on';
+    const splitWith = formData.getAll('splitWith') as string[];
+    const paidMembers = formData.getAll('paidMembers') as string[];
+
+    // Get individual payment dates for each paid member
+    const paidDates: Record<string, string> = {};
+    for (const memberId of paidMembers) {
+      const dateStr = formData.get(`paidDate_${memberId}`) as string;
+      if (dateStr) {
+        paidDates[memberId] = dateStr;
+      }
+    }
+
+    // Validate input
+    if (!creatorId) {
+      return fail(400, { error: 'Creator is required' });
+    }
+    if (!amount || amount <= 0) {
+      return fail(400, { error: 'Amount must be greater than 0' });
+    }
+    if (!description || description.trim() === '') {
+      return fail(400, { error: 'Description is required' });
+    }
+    if (!expenseDateStr) {
+      return fail(400, { error: 'Date is required' });
+    }
+
+    // Parse expense date (set to noon to avoid timezone issues)
+    const expenseDate = new Date(expenseDateStr + 'T12:00:00');
+    if (isNaN(expenseDate.getTime())) {
+      return fail(400, { error: 'Invalid date' });
+    }
+
+    // Verify creator is a member of the household
+    const creatorMembership = await db
+      .select()
+      .from(householdMembers)
+      .where(
+        and(eq(householdMembers.householdId, householdId), eq(householdMembers.userId, creatorId))
+      )
+      .limit(1);
+
+    if (creatorMembership.length === 0) {
+      return fail(400, { error: 'Selected creator is not a member of this household' });
+    }
+
+    // Verify all split members are household members
+    if (splitWith.length > 0) {
+      const splitMemberships = await db
+        .select()
+        .from(householdMembers)
+        .where(
+          and(
+            eq(householdMembers.householdId, householdId),
+            inArray(householdMembers.userId, splitWith)
+          )
+        );
+
+      if (splitMemberships.length !== splitWith.length) {
+        return fail(400, { error: 'One or more split members are not in this household' });
+      }
+    }
+
+    // Create expense
+    const expenseId = generateId();
+    const now = new Date();
+
+    await db.insert(expenses).values({
+      id: expenseId,
+      householdId,
+      creatorId,
+      amount,
+      description: description.trim(),
+      isOptional,
+      createdAt: expenseDate,
+      updatedAt: now
+    });
+
+    // Create expense splits for selected members + creator
+    const allSplitUsers = [...new Set([creatorId, ...splitWith])];
+
+    // Default paidAt date for members without a specific date:
+    // 24 hours after expense date, or current time if that would be in the future
+    const twentyFourHoursLater = new Date(expenseDate.getTime() + 24 * 60 * 60 * 1000);
+    const defaultPaidAtDate = twentyFourHoursLater > now ? now : twentyFourHoursLater;
+
+    // Helper to get paidAt date for a member
+    const getPaidAtDate = (userId: string): Date | null => {
+      if (userId === creatorId) {
+        return expenseDate;
+      }
+      if (paidMembers.includes(userId)) {
+        const memberDateStr = paidDates[userId];
+        if (memberDateStr) {
+          const memberDate = new Date(memberDateStr + 'T12:00:00');
+          if (!isNaN(memberDate.getTime())) {
+            return memberDate;
+          }
+        }
+        return defaultPaidAtDate;
+      }
+      return null;
+    };
+
+    const splits = allSplitUsers.map((userId) => ({
+      id: generateId(),
+      expenseId,
+      userId,
+      hasPaid: userId === creatorId || paidMembers.includes(userId),
+      paidAt: getPaidAtDate(userId)
+    }));
+
+    await db.insert(expenseSplits).values(splits);
+
+    return { success: true };
   }
 };
