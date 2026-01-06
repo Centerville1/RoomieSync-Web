@@ -1,5 +1,5 @@
 <script lang="ts">
-  export let variant: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' = 'primary';
+  export let variant: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'success' = 'primary';
   export let size: 'sm' | 'md' | 'lg' = 'md';
   export let type: 'button' | 'submit' | 'reset' = 'button';
   export let disabled = false;
@@ -99,6 +99,15 @@
 
   .btn-danger:hover:not(:disabled) {
     background-color: #dc2626;
+  }
+
+  .btn-success {
+    background-color: var(--color-success);
+    color: var(--color-text-inverse);
+  }
+
+  .btn-success:hover:not(:disabled) {
+    background-color: #059669;
   }
 
   .full-width {

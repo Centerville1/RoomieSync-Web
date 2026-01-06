@@ -125,7 +125,9 @@
           </div>
         </div>
       {:else}
-        <p class="solo-notice">You're the only member. This expense will be tracked for your records.</p>
+        <p class="solo-notice">
+          You're the only member. This expense will be tracked for your records.
+        </p>
       {/if}
 
       <div class="form-group">
@@ -140,7 +142,7 @@
 
   {#snippet footer()}
     <Button type="button" variant="ghost" on:click={handleClose}>Cancel</Button>
-    <Button type="submit" variant="primary" form="expense-form">Create Expense</Button>
+    <Button type="submit" variant="success" form="expense-form">Create Expense</Button>
   {/snippet}
 </Modal>
 

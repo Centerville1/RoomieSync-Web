@@ -166,9 +166,6 @@
             >Invite Members</Button
           >
         {/if}
-        <Button variant="primary" size="lg" on:click={() => (showSplitCostModal = true)}
-          >Split the Cost</Button
-        >
       </div>
     </div>
   </header>
@@ -209,6 +206,7 @@
         memberBalances={data.memberBalances}
         onEditExpense={handleEditExpense}
         onDeleteExpense={handleDeleteExpense}
+        onSplitCost={() => (showSplitCostModal = true)}
       />
       <div class="pay-button-container">
         <Button

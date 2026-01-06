@@ -41,6 +41,7 @@
     memberBalances?: Record<string, MemberBalance>;
     onEditExpense?: (expense: Expense) => void;
     onDeleteExpense?: (expense: Expense) => void;
+    onSplitCost?: () => void;
   };
 
   let {
@@ -53,8 +54,12 @@
     onSelectionChange,
     memberBalances = {},
     onEditExpense,
-    onDeleteExpense
+    onDeleteExpense,
+    onSplitCost
   }: Props = $props();
+
+  // Track hover state for the split cost row
+  let splitCostRowHovered = $state(false);
 
   // Sort members to show current user first
   const sortedMembers = $derived(
@@ -207,139 +212,176 @@
 
       <!-- Grid body -->
       <div class="expense-grid">
-      {#each expenses as expense}
-        {@const isSelectable = isSelectableByCurrentUser(expense)}
-        {@const isSelected = selectedExpenseIds.has(expense.id)}
-        {@const needsToPay = isSelectable && !expense.isOptional}
-        <div
-          class="grid-row"
-          class:selectable={isSelectable}
-          class:selected={isSelected}
-          class:needs-to-pay={needsToPay}
-          onclick={isSelectable ? () => toggleExpenseSelection(expense.id) : undefined}
-          onkeydown={isSelectable
-            ? (e) => e.key === 'Enter' && toggleExpenseSelection(expense.id)
-            : undefined}
-          role={isSelectable ? 'button' : undefined}
-          tabindex={isSelectable ? 0 : undefined}
-        >
-          {#each sortedMembers as member}
-            {@const status = getPaymentStatus(expense, member.id)}
-            {@const isMyExpense = expense.creatorId === currentUserId}
-            {@const isCreatorCell = status === 'creator'}
-            {@const isMyColumn = member.id === currentUserId}
-            <div
-              class="grid-cell"
-              class:creator={isCreatorCell}
-              class:selected={isSelected && isCreatorCell}
-              class:needs-to-pay={needsToPay}
-              class:needs-to-pay-accent={needsToPay && isCreatorCell}
-              class:first-column={isMyColumn}
-            >
-              {#if isCreatorCell}
-                <div class="expense-cell-content">
-                  {#if isMyExpense}
-                    <div class="expense-actions">
-                      <button
-                        type="button"
-                        class="action-btn edit-btn"
-                        title="Edit expense"
-                        onclick={(e) => {
-                          e.stopPropagation();
-                          onEditExpense?.(expense);
-                        }}
-                      >
-                        ✎
-                      </button>
-                      <button
-                        type="button"
-                        class="action-btn delete-btn"
-                        title="Delete expense"
-                        onclick={(e) => {
-                          e.stopPropagation();
-                          onDeleteExpense?.(expense);
-                        }}
-                      >
-                        🗑
-                      </button>
+        <!-- Split the Cost row -->
+        {#if onSplitCost}
+          <div
+            class="grid-row split-cost-row"
+            class:hovered={splitCostRowHovered}
+            onclick={onSplitCost}
+            onkeydown={(e) => e.key === 'Enter' && onSplitCost?.()}
+            onmouseenter={() => (splitCostRowHovered = true)}
+            onmouseleave={() => (splitCostRowHovered = false)}
+            role="button"
+            tabindex="0"
+          >
+            {#each sortedMembers as member}
+              {@const isCurrentUser = member.id === currentUserId}
+              <div
+                class="grid-cell split-cost-cell"
+                class:current-user-cell={isCurrentUser}
+              >
+                {#if isCurrentUser}
+                  <div class="split-cost-content">
+                    <img src="/icon-nobg.png" alt="" class="split-cost-logo" />
+                    <div class="split-cost-text">
+                      <span class="split-cost-title">Split the Cost</span>
+                      <span class="split-cost-subtitle">Click to create expense</span>
+                    </div>
+                  </div>
+                  {#if splitCostRowHovered}
+                    <div class="split-cost-plus-container">
+                      <span class="split-cost-plus">+</span>
                     </div>
                   {/if}
-                  <div class="expense-info">
-                    <span class="expense-description">
-                      {expense.description} - {formatDateTime(expense.createdAt)}
-                      {#if expense.isOptional}
-                        <span class="optional-badge">Optional</span>
-                      {/if}
-                    </span>
-                    <span
-                      class="expense-amount"
-                      class:my-expense={isMyExpense}
-                      class:other-expense={!isMyExpense}
-                    >
-                      {formatCurrency(expense.amount)}
-                    </span>
-                  </div>
-                </div>
-              {:else if status === 'paid'}
-                {@const split = expense.splits.find((s) => s.userId === member.id)}
-                {@const paidAt = split?.paidAt}
-                <div class="paid-status">
-                  <span class="status-icon paid" title="Paid">✓</span>
-                  {#if isMyExpense && paidAt}
-                    <span class="paid-info">
-                      Paid you {formatCurrency(getUserShare(expense))}
-                      <span class="paid-date">{formatShortDateTime(paidAt)}</span>
-                    </span>
-                  {:else if isMyColumn && paidAt}
-                    <span class="paid-info you-paid">
-                      You paid {formatCurrency(getUserShare(expense))}
-                      <span class="paid-date">{formatShortDateTime(paidAt)}</span>
-                    </span>
-                  {/if}
-                </div>
-              {:else if status === 'unpaid'}
-                {#if expense.isOptional}
-                  <div class="optional-status">
-                    <span class="status-icon optional" title="Optional - Unpaid">?</span>
-                    <span class="optional-amount"
-                      ><span class="optional-badge">Optional</span>
-                      {formatCurrency(getUserShare(expense))}</span
-                    >
-                  </div>
-                {:else}
-                  <div class="unpaid-status">
-                    <span
-                      class="status-icon unpaid"
-                      class:other-column={!isMyColumn}
-                      class:selected-check={isSelected && isMyColumn}
-                      title={isSelected && isMyColumn ? 'Selected' : 'Unpaid'}
-                      >{isSelected && isMyColumn ? '☑' : '☐'}</span
-                    >
+                {/if}
+              </div>
+            {/each}
+          </div>
+        {/if}
+        {#each expenses as expense}
+          {@const isSelectable = isSelectableByCurrentUser(expense)}
+          {@const isSelected = selectedExpenseIds.has(expense.id)}
+          {@const needsToPay = isSelectable && !expense.isOptional}
+          <div
+            class="grid-row"
+            class:selectable={isSelectable}
+            class:selected={isSelected}
+            class:needs-to-pay={needsToPay}
+            onclick={isSelectable ? () => toggleExpenseSelection(expense.id) : undefined}
+            onkeydown={isSelectable
+              ? (e) => e.key === 'Enter' && toggleExpenseSelection(expense.id)
+              : undefined}
+            role={isSelectable ? 'button' : undefined}
+            tabindex={isSelectable ? 0 : undefined}
+          >
+            {#each sortedMembers as member}
+              {@const status = getPaymentStatus(expense, member.id)}
+              {@const isMyExpense = expense.creatorId === currentUserId}
+              {@const isCreatorCell = status === 'creator'}
+              {@const isMyColumn = member.id === currentUserId}
+              <div
+                class="grid-cell"
+                class:creator={isCreatorCell}
+                class:selected={isSelected && isCreatorCell}
+                class:needs-to-pay={needsToPay}
+                class:needs-to-pay-accent={needsToPay && isCreatorCell}
+                class:first-column={isMyColumn}
+              >
+                {#if isCreatorCell}
+                  <div class="expense-cell-content">
                     {#if isMyExpense}
-                      <span class="owes-info">Owes you {formatCurrency(getUserShare(expense))}</span
+                      <div class="expense-actions">
+                        <button
+                          type="button"
+                          class="action-btn edit-btn"
+                          title="Edit expense"
+                          onclick={(e) => {
+                            e.stopPropagation();
+                            onEditExpense?.(expense);
+                          }}
+                        >
+                          ✎
+                        </button>
+                        <button
+                          type="button"
+                          class="action-btn delete-btn"
+                          title="Delete expense"
+                          onclick={(e) => {
+                            e.stopPropagation();
+                            onDeleteExpense?.(expense);
+                          }}
+                        >
+                          🗑
+                        </button>
+                      </div>
+                    {/if}
+                    <div class="expense-info">
+                      <span class="expense-description">
+                        {expense.description} - {formatDateTime(expense.createdAt)}
+                        {#if expense.isOptional}
+                          <span class="optional-badge">Optional</span>
+                        {/if}
+                      </span>
+                      <span
+                        class="expense-amount"
+                        class:my-expense={isMyExpense}
+                        class:other-expense={!isMyExpense}
                       >
-                    {:else if isMyColumn}
-                      <span class="you-owe-info"
-                        >You owe {formatCurrency(getUserShare(expense))}</span
-                      >
+                        {formatCurrency(expense.amount)}
+                      </span>
+                    </div>
+                  </div>
+                {:else if status === 'paid'}
+                  {@const split = expense.splits.find((s) => s.userId === member.id)}
+                  {@const paidAt = split?.paidAt}
+                  <div class="paid-status">
+                    <span class="status-icon paid" title="Paid">✓</span>
+                    {#if isMyExpense && paidAt}
+                      <span class="paid-info">
+                        Paid you {formatCurrency(getUserShare(expense))}
+                        <span class="paid-date">{formatShortDateTime(paidAt)}</span>
+                      </span>
+                    {:else if isMyColumn && paidAt}
+                      <span class="paid-info you-paid">
+                        You paid {formatCurrency(getUserShare(expense))}
+                        <span class="paid-date">{formatShortDateTime(paidAt)}</span>
+                      </span>
                     {/if}
                   </div>
+                {:else if status === 'unpaid'}
+                  {#if expense.isOptional}
+                    <div class="optional-status">
+                      <span class="status-icon optional" title="Optional - Unpaid">?</span>
+                      <span class="optional-amount"
+                        ><span class="optional-badge">Optional</span>
+                        {formatCurrency(getUserShare(expense))}</span
+                      >
+                    </div>
+                  {:else}
+                    <div class="unpaid-status">
+                      <span
+                        class="status-icon unpaid"
+                        class:other-column={!isMyColumn}
+                        class:selected-check={isSelected && isMyColumn}
+                        title={isSelected && isMyColumn ? 'Selected' : 'Unpaid'}
+                        >{isSelected && isMyColumn ? '☑' : '☐'}</span
+                      >
+                      {#if isMyExpense}
+                        <span class="owes-info"
+                          >Owes you {formatCurrency(getUserShare(expense))}</span
+                        >
+                      {:else if isMyColumn}
+                        <span class="you-owe-info"
+                          >You owe {formatCurrency(getUserShare(expense))}</span
+                        >
+                      {/if}
+                    </div>
+                  {/if}
+                {:else}
+                  <span class="status-icon not-included" title="Not included">—</span>
                 {/if}
-              {:else}
-                <span class="status-icon not-included" title="Not included">—</span>
-              {/if}
-            </div>
-          {/each}
-        </div>
-      {/each}
+              </div>
+            {/each}
+          </div>
+        {/each}
 
-      {#if expenses.length === 0}
-        <div class="empty-state">No expenses yet</div>
-      {/if}
+        {#if expenses.length === 0}
+          <div class="empty-state">No expenses yet</div>
+        {/if}
 
-      {#if isLoadingMore}
-        <div class="loading-more">Loading more...</div>
-      {/if}
+        {#if isLoadingMore}
+          <div class="loading-more">Loading more...</div>
+        {/if}
       </div>
     </div>
   </div>
@@ -354,6 +396,7 @@
     margin-bottom: var(--space-lg);
     display: flex;
     flex-direction: column;
+    position: relative;
   }
 
   .scroll-container {
@@ -369,11 +412,11 @@
   .grid-header {
     display: grid;
     grid-template-columns: repeat(var(--member-count), minmax(150px, 1fr));
+    background-color: var(--color-bg-tertiary);
+    border-bottom: 2px solid var(--color-border);
     position: sticky;
     top: 0;
     z-index: 1;
-    background-color: var(--color-bg-tertiary);
-    border-bottom: 2px solid var(--color-border);
   }
 
   .member-header {
@@ -441,6 +484,110 @@
 
   .grid-row {
     display: contents;
+  }
+
+  /* Split the Cost row styles */
+  .split-cost-row {
+    display: contents;
+    cursor: pointer;
+  }
+
+  .split-cost-row .split-cost-cell {
+    position: relative;
+    background-color: var(--color-bg-secondary);
+    transition: background-color 0.2s ease;
+    border-bottom: 3px solid var(--color-border);
+  }
+
+  .split-cost-row.hovered .split-cost-cell {
+    background-color: rgba(16, 185, 129, 0.08);
+    border-bottom-color: var(--color-success, #10b981);
+  }
+
+  .split-cost-row .split-cost-cell.current-user-cell {
+    background-color: rgba(16, 185, 129, 0.06);
+    border-left: 3px solid var(--color-success, #10b981);
+  }
+
+  .split-cost-row.hovered .split-cost-cell.current-user-cell {
+    background-color: rgba(16, 185, 129, 0.15);
+  }
+
+  .split-cost-content {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+
+  .split-cost-logo {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    transition: transform 0.2s ease;
+  }
+
+  .split-cost-row.hovered .split-cost-logo {
+    transform: scale(1.1);
+  }
+
+  .split-cost-plus-container {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    transform: translate(-50%, 50%);
+    z-index: 1;
+  }
+
+  .split-cost-plus {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: var(--color-success, #10b981);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1;
+    animation: fadeIn 0.15s ease;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: scale(0.8);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .split-cost-text {
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+  }
+
+  .split-cost-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-success, #10b981);
+  }
+
+  .split-cost-subtitle {
+    font-size: 0.7rem;
+    color: var(--color-text-tertiary);
+    transition: color 0.2s ease;
+  }
+
+  .split-cost-row.hovered .split-cost-subtitle {
+    color: var(--color-success, #10b981);
+  }
+
+  .split-cost-row.hovered .split-cost-cell {
+    box-shadow: 0 3px 8px rgba(16, 185, 129, 0.3);
   }
 
   .grid-cell {
