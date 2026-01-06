@@ -3,16 +3,16 @@ import { redirect } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, cookies }) => {
-	if (!locals.session) {
-		throw redirect(302, '/login');
-	}
+  if (!locals.session) {
+    throw redirect(302, '/login');
+  }
 
-	await deleteSession(locals.session.id);
-	const sessionCookie = createBlankSessionCookie();
-	cookies.set(sessionCookie.name, sessionCookie.value, {
-		path: '.',
-		...sessionCookie.attributes
-	});
+  await deleteSession(locals.session.id);
+  const sessionCookie = createBlankSessionCookie();
+  cookies.set(sessionCookie.name, sessionCookie.value, {
+    path: '.',
+    ...sessionCookie.attributes
+  });
 
-	throw redirect(302, '/login');
+  throw redirect(302, '/login');
 };

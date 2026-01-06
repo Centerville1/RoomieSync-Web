@@ -1,175 +1,125 @@
 <script lang="ts">
-	import type { ActionData } from './$types';
+  import type { ActionData } from './$types';
+  import Button from '$lib/components/Button.svelte';
+  import Card from '$lib/components/Card.svelte';
+  import Input from '$lib/components/Input.svelte';
 
-	let { form }: { form: ActionData } = $props();
+  let { form }: { form: ActionData } = $props();
+
+  let name = $derived(form?.name ?? '');
+  let email = $derived(form?.email ?? '');
+  let password = $state('');
+  let confirmPassword = $state('');
 </script>
 
 <div class="auth-container">
-	<div class="auth-card">
-		<h1>Create Account</h1>
-		<p class="subtitle">Join RoomieSync and start tracking expenses</p>
+  <Card padding="lg" shadow="lg">
+    <div class="auth-content">
+      <h1>Create Account</h1>
+      <p class="subtitle">Join RoomieSync and start tracking expenses</p>
 
-		<form method="POST" class="auth-form">
-			{#if form?.error}
-				<div class="error-message">
-					{form.error}
-				</div>
-			{/if}
+      <form method="POST" class="auth-form">
+        {#if form?.error}
+          <div class="error-message">
+            {form.error}
+          </div>
+        {/if}
 
-			<div class="form-group">
-				<label for="name">Name</label>
-				<input
-					type="text"
-					id="name"
-					name="name"
-					required
-					autocomplete="name"
-					value={form?.name ?? ''}
-				/>
-			</div>
+        <Input type="text" id="name" name="name" label="Name" bind:value={name} required />
 
-			<div class="form-group">
-				<label for="email">Email</label>
-				<input
-					type="email"
-					id="email"
-					name="email"
-					required
-					autocomplete="email"
-					value={form?.email ?? ''}
-				/>
-			</div>
+        <Input type="email" id="email" name="email" label="Email" bind:value={email} required />
 
-			<div class="form-group">
-				<label for="password">Password</label>
-				<input
-					type="password"
-					id="password"
-					name="password"
-					required
-					autocomplete="new-password"
-					minlength="6"
-				/>
-				<span class="hint">At least 6 characters</span>
-			</div>
+        <Input
+          type="password"
+          id="password"
+          name="password"
+          label="Password"
+          bind:value={password}
+          required
+        />
 
-			<div class="form-group">
-				<label for="confirmPassword">Confirm Password</label>
-				<input
-					type="password"
-					id="confirmPassword"
-					name="confirmPassword"
-					required
-					autocomplete="new-password"
-				/>
-			</div>
+        <Input
+          type="password"
+          id="confirmPassword"
+          name="confirmPassword"
+          label="Confirm Password"
+          bind:value={confirmPassword}
+          required
+        />
 
-			<button type="submit" class="btn-primary">Create Account</button>
-		</form>
+        <Button type="submit" variant="primary" fullWidth size="lg">Create Account</Button>
+      </form>
 
-		<p class="auth-footer">
-			Already have an account? <a href="/login">Sign in</a>
-		</p>
-	</div>
+      <p class="auth-footer">
+        Already have an account? <a href="/login">Sign in</a>
+      </p>
+    </div>
+  </Card>
 </div>
 
 <style>
-	.auth-container {
-		min-height: 100vh;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: var(--space-md);
-		background-color: var(--color-bg-secondary);
-	}
+  .auth-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-md);
+    background-color: var(--color-bg-secondary);
+  }
 
-	.auth-card {
-		background: var(--color-bg-primary);
-		border-radius: var(--radius-lg);
-		box-shadow: var(--shadow-lg);
-		padding: var(--space-2xl);
-		width: 100%;
-		max-width: 420px;
-	}
+  .auth-container :global(.card) {
+    width: 100%;
+    max-width: 420px;
+  }
 
-	h1 {
-		margin-bottom: var(--space-sm);
-		text-align: center;
-		color: var(--color-text-primary);
-	}
+  .auth-content {
+    width: 100%;
+  }
 
-	.subtitle {
-		text-align: center;
-		color: var(--color-text-secondary);
-		margin-bottom: var(--space-xl);
-	}
+  h1 {
+    margin: 0 0 var(--space-sm) 0;
+    text-align: center;
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
 
-	.auth-form {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-lg);
-	}
+  .subtitle {
+    text-align: center;
+    color: var(--color-text-secondary);
+    margin: 0 0 var(--space-xl) 0;
+  }
 
-	.form-group {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-xs);
-	}
+  .auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+  }
 
-	label {
-		font-weight: 500;
-		color: var(--color-text-primary);
-		font-size: 0.875rem;
-	}
+  .error-message {
+    padding: var(--space-md);
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid var(--color-error);
+    border-radius: var(--radius-md);
+    color: var(--color-error);
+    font-size: 0.875rem;
+  }
 
-	input {
-		padding: var(--space-sm) var(--space-md);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-		background: var(--color-bg-primary);
-		color: var(--color-text-primary);
-		font-size: 1rem;
-	}
+  .auth-footer {
+    margin-top: var(--space-lg);
+    text-align: center;
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+  }
 
-	input:focus {
-		outline: none;
-		border-color: var(--color-primary);
-		box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
-	}
+  .auth-footer a {
+    color: var(--color-secondary);
+    font-weight: 600;
+    text-decoration: none;
+  }
 
-	.hint {
-		font-size: 0.75rem;
-		color: var(--color-text-tertiary);
-	}
-
-	.btn-primary {
-		background: var(--color-primary);
-		color: var(--color-text-inverse);
-		padding: var(--space-md) var(--space-lg);
-		border: none;
-		border-radius: var(--radius-md);
-		font-weight: 500;
-		font-size: 1rem;
-		transition: background-color 0.2s;
-	}
-
-	.btn-primary:hover {
-		background: var(--color-primary-hover);
-	}
-
-	.error-message {
-		padding: var(--space-md);
-		background: rgba(239, 68, 68, 0.1);
-		border: 1px solid var(--color-error);
-		border-radius: var(--radius-md);
-		color: var(--color-error);
-		font-size: 0.875rem;
-	}
-
-	.auth-footer {
-		margin-top: var(--space-lg);
-		text-align: center;
-		color: var(--color-text-secondary);
-		font-size: 0.875rem;
-	}
+  .auth-footer a:hover {
+    text-decoration: underline;
+  }
 </style>

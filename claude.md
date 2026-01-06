@@ -1,11 +1,13 @@
 # RoomieSync Web - Project Overview
 
 ## Project Vision
+
 Simplified web port of the original RoomieSync mobile app, focused on shared household expense tracking and payment coordination. Lightweight, responsive, and works on all devices.
 
 ## Architecture
 
 ### Tech Stack
+
 - **Framework**: SvelteKit with TypeScript
 - **Database**: Turso/LibSQL with Drizzle ORM
 - **Hosting**: Vercel (free tier)
@@ -18,12 +20,14 @@ Simplified web port of the original RoomieSync mobile app, focused on shared hou
 - **Styling**: CSS custom properties for theming system
 
 ### Type Safety
+
 - Use `.ts` files everywhere
 - Svelte components with `lang="ts"`
 - Drizzle ORM provides full type inference for database queries
 - No manual type casting needed for database results
 
 ### Theming System
+
 - CSS custom properties for color palettes and theme modes
 - Household-specific color schemes that override app theme when viewing that household
 - Architecture supports future custom comprehensive theming (color picker)
@@ -32,23 +36,27 @@ Simplified web port of the original RoomieSync mobile app, focused on shared hou
 ## Core Data Models
 
 ### Users
+
 - Single user account can join multiple households
 - Email + password authentication
 - User profile (name, avatar optional)
 
 ### Households
+
 - Creator becomes admin with elevated permissions (delete/edit house, manage members)
 - Future: ability to promote members to admin
 - Customization: name, colors, image, banner
 - Color scheme overrides app theme when viewing household
 
 ### Invites
+
 - One-time use per email address
 - Shows in invitee's homepage when they log in
 - Generates shareable link
 - No email notifications in MVP
 
 ### Expenses
+
 - **Creator**: User who paid for the expense (already paid)
 - **Amount**: Total cost
 - **Description**: What the expense is for
@@ -62,12 +70,14 @@ Simplified web port of the original RoomieSync mobile app, focused on shared hou
 ## User Flows
 
 ### Account & Household Management
+
 1. Sign up / login with email + password
 2. Create household or accept invite from homepage
 3. Join household via one-time invite link
 4. Customize household (admin only): colors, image, banner
 
 ### Expense Creation & Payment
+
 1. Inside household, click "Split the Cost"
 2. Enter amount, description, select who to split with (default: everyone)
 3. Optionally: add receipt image, mark as optional expense
@@ -78,6 +88,7 @@ Simplified web port of the original RoomieSync mobile app, focused on shared hou
 8. Paid expenses hidden by default (show via filter adjustment)
 
 ### Expense Management
+
 - Edit/delete expenses after creation
 - Prompt user to coordinate if editing/deleting already-paid expenses
 - Undo payment marks
@@ -85,6 +96,7 @@ Simplified web port of the original RoomieSync mobile app, focused on shared hou
 ## MVP UI/UX
 
 ### Pages
+
 - **Auth Flow**: Sign up / login
 - **Homepage**:
   - Show pending household invites at top
@@ -102,12 +114,14 @@ Simplified web port of the original RoomieSync mobile app, focused on shared hou
 - **Settings**: Household management (admin), member management
 
 ### Visual Design
+
 - Responsive design, mobile-first
 - Optional expenses visually differentiated in columns
 - Paid expenses hidden unless filter adjusted
 - Household color scheme applies throughout household views
 
 ## MVP Exclusions
+
 - No shopping list feature (original app had this)
 - No email notifications for invites
 - No password reset / email verification (future enhancement)
@@ -115,6 +129,7 @@ Simplified web port of the original RoomieSync mobile app, focused on shared hou
 - No comprehensive custom theming UI (architecture in place for future)
 
 ## Future Enhancements
+
 - Email notifications
 - Password reset / email verification
 - Partial payments
