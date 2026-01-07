@@ -6,44 +6,39 @@
 
   let { form }: { form: ActionData } = $props();
 
-  let email = $derived(form?.email ?? '');
-  let password = $state('');
+  let email = $state(form?.email ?? '');
 </script>
 
 <div class="auth-container">
   <Card padding="lg" shadow="lg">
     <div class="auth-content">
-      <h1>Welcome Back</h1>
-      <p class="subtitle">Sign in to your RoomieSync account</p>
+      <h1>Forgot Password</h1>
+      <p class="subtitle">Enter your email and we'll send you a reset link</p>
 
-      <form method="POST" class="auth-form">
-        {#if form?.error}
-          <div class="error-message">
-            {form.error}
-          </div>
-        {/if}
-
-        <Input type="email" id="email" name="email" label="Email" bind:value={email} required />
-
-        <Input
-          type="password"
-          id="password"
-          name="password"
-          label="Password"
-          bind:value={password}
-          required
-        />
-
-        <div class="forgot-password">
-          <a href="/forgot-password">Forgot password?</a>
+      {#if form?.success}
+        <div class="success-message">
+          {form.message}
         </div>
+        <p class="auth-footer">
+          <a href="/login">Back to login</a>
+        </p>
+      {:else}
+        <form method="POST" class="auth-form">
+          {#if form?.error}
+            <div class="error-message">
+              {form.error}
+            </div>
+          {/if}
 
-        <Button type="submit" variant="secondary" fullWidth size="lg">Sign In</Button>
-      </form>
+          <Input type="email" id="email" name="email" label="Email" bind:value={email} required />
 
-      <p class="auth-footer">
-        Don't have an account? <a href="/signup">Sign up</a>
-      </p>
+          <Button type="submit" variant="secondary" fullWidth size="lg">Send Reset Link</Button>
+        </form>
+
+        <p class="auth-footer">
+          Remember your password? <a href="/login">Sign in</a>
+        </p>
+      {/if}
     </div>
   </Card>
 </div>
@@ -97,6 +92,16 @@
     font-size: 0.875rem;
   }
 
+  .success-message {
+    padding: var(--space-md);
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid var(--color-success);
+    border-radius: var(--radius-md);
+    color: var(--color-success);
+    font-size: 0.875rem;
+    text-align: center;
+  }
+
   .auth-footer {
     margin-top: var(--space-lg);
     text-align: center;
@@ -111,22 +116,6 @@
   }
 
   .auth-footer a:hover {
-    text-decoration: underline;
-  }
-
-  .forgot-password {
-    text-align: right;
-    margin-top: calc(var(--space-sm) * -1);
-  }
-
-  .forgot-password a {
-    color: var(--color-text-secondary);
-    font-size: 0.875rem;
-    text-decoration: none;
-  }
-
-  .forgot-password a:hover {
-    color: var(--color-primary);
     text-decoration: underline;
   }
 </style>
