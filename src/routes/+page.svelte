@@ -16,7 +16,7 @@
     showCreateModal = true;
   }
 
-  const siteUrl = 'https://roomiesync.app';
+  const siteUrl = 'https://www.roomiesync.net';
   const pageTitle = 'RoomieSync - Shared Household Expense Tracking';
   const pageDescription =
     'Track shared expenses with your roommates. Split costs fairly, see who owes what, and keep your household finances organized. Free and easy to use.';
