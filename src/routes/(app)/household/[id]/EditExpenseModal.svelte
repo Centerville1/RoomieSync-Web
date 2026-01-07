@@ -3,6 +3,7 @@
   import Button from '$lib/components/Button.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
+  import MemberSelect from '$lib/components/MemberSelect.svelte';
   import { enhance } from '$app/forms';
 
   type ExpenseSplit = {
@@ -40,7 +41,6 @@
   let description = $state('');
   let isOptional = $state(false);
   let selectedMembers = $state<string[]>([]);
-  let selectAll = $state(false);
 
   // Get members excluding the expense creator (they're always included)
   let otherMembers = $derived(members.filter((m) => m.id !== expense?.creatorId));
@@ -59,14 +59,6 @@
         .map((s) => s.userId);
       selectedMembers = splitMemberIds;
       originalSplitMemberIds = splitMemberIds;
-    }
-  });
-
-  // Sync selectAll state when individual selections change
-  $effect(() => {
-    const allSelected = otherMembers.length > 0 && selectedMembers.length === otherMembers.length;
-    if (selectAll !== allSelected) {
-      selectAll = allSelected;
     }
   });
 
@@ -179,22 +171,6 @@
     return member.displayName || member.name;
   }
 
-  function toggleMember(memberId: string) {
-    if (selectedMembers.includes(memberId)) {
-      selectedMembers = selectedMembers.filter((id) => id !== memberId);
-    } else {
-      selectedMembers = [...selectedMembers, memberId];
-    }
-  }
-
-  function handleSelectAllChange() {
-    if (selectAll) {
-      selectedMembers = otherMembers.map((m) => m.id);
-    } else {
-      selectedMembers = [];
-    }
-  }
-
   function handleClose() {
     open = false;
     selectedMembers = [];
@@ -237,37 +213,17 @@
         </div>
 
         <div class="form-group split-section">
-          <span class="form-label">Split with</span>
-          <div class="members-select">
-            <div class="select-all-option">
-              <Checkbox
-                bind:checked={selectAll}
-                on:change={handleSelectAllChange}
-                label="Everyone else"
-              />
-            </div>
-            <div class="members-checkboxes">
-              {#each otherMembers as member}
-                {@const isChecked = selectedMembers.includes(member.id)}
-                {@const existingSplit = expense.splits.find((s) => s.userId === member.id)}
-                {@const hasPaid = existingSplit?.hasPaid ?? false}
-                <div class="member-row">
-                  <Checkbox
-                    name="splitWith"
-                    value={member.id}
-                    checked={isChecked}
-                    on:change={() => toggleMember(member.id)}
-                    label={getMemberDisplayName(member)}
-                  />
-                  {#if hasPaid}
-                    <span class="paid-badge" class:removed={!isChecked}>
-                      {isChecked ? 'Paid' : 'Paid (removing)'}
-                    </span>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-          </div>
+          <MemberSelect members={otherMembers} bind:selectedMembers initializeAll={false}>
+            {#snippet memberExtra({ member, isChecked })}
+              {@const existingSplit = expense?.splits.find((s) => s.userId === member.id)}
+              {@const hasPaid = existingSplit?.hasPaid ?? false}
+              {#if hasPaid}
+                <span class="paid-badge" class:removed={!isChecked}>
+                  {isChecked ? 'Paid' : 'Paid (removing)'}
+                </span>
+              {/if}
+            {/snippet}
+          </MemberSelect>
         </div>
 
         <div class="form-group">
@@ -417,37 +373,6 @@
 
   .split-section {
     margin-top: var(--space-md);
-  }
-
-  .form-label {
-    display: block;
-    margin-bottom: var(--space-sm);
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--color-text-primary);
-  }
-
-  .members-select {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-md);
-  }
-
-  .select-all-option {
-    padding-bottom: var(--space-sm);
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  .members-checkboxes {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-  }
-
-  .member-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
   }
 
   .paid-badge {

@@ -4,7 +4,9 @@
   import Input from '$lib/components/Input.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
+  import MemberSelect from '$lib/components/MemberSelect.svelte';
   import { enhance } from '$app/forms';
+  import { untrack } from 'svelte';
 
   type Member = {
     id: string;
@@ -31,7 +33,6 @@
   let selectedMembers = $state<string[]>([]);
   let paidMembers = $state<string[]>([]);
   let paidDates = $state<Record<string, string>>({});
-  let selectAll = $state(true);
 
   // Initialize form when modal opens
   $effect(() => {
@@ -46,7 +47,6 @@
       // Initialize splits with all other members
       const others = members.filter((m) => m.id !== creatorId);
       selectedMembers = others.map((m) => m.id);
-      selectAll = others.length > 0;
     }
   });
 
@@ -62,34 +62,35 @@
       selectedMembers = others.map((m) => m.id);
       paidMembers = [];
       paidDates = {};
-      selectAll = others.length > 0;
     }
   });
 
-  // Sync selectAll state
+  // Clean up paid data when members are deselected
+  // Use untrack to read paidMembers/paidDates without creating dependencies (avoids infinite loop)
   $effect(() => {
-    if (otherMembers.length > 0) {
-      const allSelected = selectedMembers.length === otherMembers.length;
-      if (selectAll !== allSelected) {
-        selectAll = allSelected;
+    const selected = selectedMembers;
+    const currentPaid = untrack(() => paidMembers);
+    const currentDates = untrack(() => paidDates);
+
+    const filteredPaidMembers = currentPaid.filter((id) => selected.includes(id));
+    const validDates: Record<string, string> = {};
+    for (const id of Object.keys(currentDates)) {
+      if (selected.includes(id)) {
+        validDates[id] = currentDates[id];
       }
+    }
+
+    // Only update if there are changes to avoid unnecessary re-renders
+    if (filteredPaidMembers.length !== currentPaid.length) {
+      paidMembers = filteredPaidMembers;
+    }
+    if (Object.keys(validDates).length !== Object.keys(currentDates).length) {
+      paidDates = validDates;
     }
   });
 
   function getMemberDisplayName(member: Member) {
     return member.displayName || member.name;
-  }
-
-  function toggleMember(memberId: string) {
-    if (selectedMembers.includes(memberId)) {
-      selectedMembers = selectedMembers.filter((id) => id !== memberId);
-      // Also remove from paid and clear date
-      paidMembers = paidMembers.filter((id) => id !== memberId);
-      const { [memberId]: _, ...rest } = paidDates;
-      paidDates = rest;
-    } else {
-      selectedMembers = [...selectedMembers, memberId];
-    }
   }
 
   function togglePaidMember(memberId: string) {
@@ -105,16 +106,6 @@
 
   function updatePaidDate(memberId: string, date: string) {
     paidDates = { ...paidDates, [memberId]: date };
-  }
-
-  function handleSelectAllChange() {
-    if (selectAll) {
-      selectedMembers = otherMembers.map((m) => m.id);
-    } else {
-      selectedMembers = [];
-      paidMembers = [];
-      paidDates = {};
-    }
   }
 
   function handleClose() {
@@ -179,56 +170,34 @@
       <!-- Split With -->
       {#if otherMembers.length > 0}
         <div class="form-group">
-          <span class="form-label">Split with</span>
-          <div class="members-select">
-            <div class="select-all-option">
-              <Checkbox
-                bind:checked={selectAll}
-                on:change={handleSelectAllChange}
-                label="Everyone else"
-              />
-            </div>
-            <div class="members-checkboxes">
-              {#each otherMembers as member}
-                {@const isInSplit = selectedMembers.includes(member.id)}
-                {@const hasPaid = paidMembers.includes(member.id)}
-                <div class="member-row">
-                  <div class="member-split-checkbox">
+          <MemberSelect members={otherMembers} bind:selectedMembers initializeAll={false}>
+            {#snippet memberExtra({ member, isChecked })}
+              {@const hasPaid = paidMembers.includes(member.id)}
+              {#if isChecked}
+                <div class="paid-controls">
+                  <div class="paid-checkbox">
                     <Checkbox
-                      name="splitWith"
+                      name="paidMembers"
                       value={member.id}
-                      checked={isInSplit}
-                      on:change={() => toggleMember(member.id)}
-                      label={getMemberDisplayName(member)}
+                      checked={hasPaid}
+                      on:change={() => togglePaidMember(member.id)}
+                      label="Already paid"
                     />
                   </div>
-                  {#if isInSplit}
-                    <div class="paid-controls">
-                      <div class="paid-checkbox">
-                        <Checkbox
-                          name="paidMembers"
-                          value={member.id}
-                          checked={hasPaid}
-                          on:change={() => togglePaidMember(member.id)}
-                          label="Already paid"
-                        />
-                      </div>
-                      {#if hasPaid}
-                        <input
-                          type="date"
-                          name="paidDate_{member.id}"
-                          class="paid-date-input"
-                          value={paidDates[member.id] || ''}
-                          oninput={(e) => updatePaidDate(member.id, e.currentTarget.value)}
-                          placeholder="Payment date"
-                        />
-                      {/if}
-                    </div>
+                  {#if hasPaid}
+                    <input
+                      type="date"
+                      name="paidDate_{member.id}"
+                      class="paid-date-input"
+                      value={paidDates[member.id] || ''}
+                      oninput={(e) => updatePaidDate(member.id, e.currentTarget.value)}
+                      placeholder="Payment date"
+                    />
                   {/if}
                 </div>
-              {/each}
-            </div>
-          </div>
+              {/if}
+            {/snippet}
+          </MemberSelect>
         </div>
       {:else}
         <p class="solo-notice">
@@ -259,14 +228,6 @@
     margin-bottom: var(--space-lg);
   }
 
-  .form-label {
-    display: block;
-    margin-bottom: var(--space-sm);
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--color-text-primary);
-  }
-
   .select-input {
     width: 100%;
     padding: var(--space-sm) var(--space-md);
@@ -283,37 +244,6 @@
     outline: none;
     border-color: var(--color-secondary);
     box-shadow: 0 0 0 3px rgba(107, 127, 255, 0.1);
-  }
-
-  .members-select {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-md);
-  }
-
-  .select-all-option {
-    padding-bottom: var(--space-sm);
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  .members-checkboxes {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-  }
-
-  .member-row {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: var(--space-sm);
-    padding: var(--space-sm) 0;
-  }
-
-  .member-split-checkbox {
-    flex: 1;
-    min-width: 120px;
   }
 
   .paid-controls {
