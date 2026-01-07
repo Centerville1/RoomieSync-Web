@@ -15,7 +15,66 @@
   function handleCreateClick() {
     showCreateModal = true;
   }
+
+  const siteUrl = 'https://roomiesync.app';
+  const pageTitle = 'RoomieSync - Shared Household Expense Tracking';
+  const pageDescription =
+    'Track shared expenses with your roommates. Split costs fairly, see who owes what, and keep your household finances organized. Free and easy to use.';
+  const pageImage = `${siteUrl}/icon.png`;
 </script>
+
+<svelte:head>
+  <title>{pageTitle}</title>
+  <meta name="description" content={pageDescription} />
+  <link rel="canonical" href={siteUrl} />
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content={siteUrl} />
+  <meta property="og:title" content={pageTitle} />
+  <meta property="og:description" content={pageDescription} />
+  <meta property="og:image" content={pageImage} />
+  <meta property="og:site_name" content="RoomieSync" />
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:url" content={siteUrl} />
+  <meta name="twitter:title" content={pageTitle} />
+  <meta name="twitter:description" content={pageDescription} />
+  <meta name="twitter:image" content={pageImage} />
+
+  <!-- Additional SEO -->
+  <meta name="robots" content="index, follow" />
+  <meta
+    name="keywords"
+    content="expense tracking, roommate expenses, split bills, household expenses, shared costs, roommate app, bill splitting"
+  />
+  <meta name="author" content="RoomieSync" />
+
+  <!-- Structured Data -->
+  {@html `<script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "RoomieSync",
+      "description": "${pageDescription}",
+      "url": "${siteUrl}",
+      "applicationCategory": "FinanceApplication",
+      "operatingSystem": "Web",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "featureList": [
+        "Track shared household expenses",
+        "Split costs among roommates",
+        "Multiple household support",
+        "Payment tracking"
+      ]
+    }
+  </script>`}
+</svelte:head>
 
 <div class="home-container">
   <Header user={data.user} />

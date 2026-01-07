@@ -1,0 +1,8 @@
+# RoomieSync Robots.txt
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /household/
+
+# Sitemap
+Sitemap: https://roomiesync.app/sitemap.xml
