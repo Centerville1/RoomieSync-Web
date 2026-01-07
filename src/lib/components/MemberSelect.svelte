@@ -25,7 +25,6 @@
     memberExtra?: import('svelte').Snippet<[{ member: Member; isChecked: boolean }]>;
   } = $props();
 
-  let selectAll = $state(false);
   let hasInitialized = $state(false);
 
   // Initialize with all members selected on first render (if initializeAll is true)
@@ -37,13 +36,8 @@
     }
   });
 
-  // Sync selectAll state when individual selections change
-  $effect(() => {
-    const allSelected = members.length > 0 && selectedMembers.length === members.length;
-    if (selectAll !== allSelected) {
-      selectAll = allSelected;
-    }
-  });
+  // Derive selectAll from selectedMembers (read-only derived state)
+  let selectAll = $derived(members.length > 0 && selectedMembers.length === members.length);
 
   function getMemberDisplayName(member: Member) {
     return member.displayName || member.name;
@@ -57,12 +51,11 @@
     }
   }
 
-  function handleSelectAllChange() {
-    if (selectAll) {
-      // Was just checked, select all members
+  function handleSelectAllChange(event: Event) {
+    const checked = (event.target as HTMLInputElement).checked;
+    if (checked) {
       selectedMembers = members.map((m) => m.id);
     } else {
-      // Was just unchecked, deselect all members
       selectedMembers = [];
     }
   }
@@ -73,11 +66,7 @@
     <span class="form-label">{label}</span>
     <div class="members-container">
       <div class="select-all-option">
-        <Checkbox
-          bind:checked={selectAll}
-          on:change={handleSelectAllChange}
-          label={selectAllLabel}
-        />
+        <Checkbox checked={selectAll} on:change={handleSelectAllChange} label={selectAllLabel} />
       </div>
       <div class="members-checkboxes">
         {#each members as member (member.id)}
