@@ -1,11 +1,13 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { createSession, createSessionCookie } from '$lib/server/auth';
 import { db } from '$lib/server/db/client';
 import { users } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { hash } from '@node-rs/argon2';
 import { generateId } from '$lib/server/utils';
+import { createEmailVerificationToken } from '$lib/server/email-verification';
+import { sendEmail } from '$lib/server/email';
+import { getEmailVerificationEmail } from '$lib/server/email/templates';
 
 export const load: PageServerLoad = async ({ locals }) => {
   if (locals.user) {
@@ -15,7 +17,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
-  default: async ({ request, cookies }) => {
+  default: async ({ request, url }) => {
     const formData = await request.formData();
     const name = formData.get('name');
     const email = formData.get('email');
@@ -63,6 +65,25 @@ export const actions: Actions = {
       .limit(1);
 
     if (existingUser.length > 0) {
+      // If user exists but isn't verified, allow resending verification
+      if (!existingUser[0].emailVerified) {
+        const token = await createEmailVerificationToken(existingUser[0].id);
+        const verificationLink = `${url.origin}/verify-email?token=${token}`;
+        const { html, text } = getEmailVerificationEmail({
+          userName: existingUser[0].name,
+          verificationLink
+        });
+
+        await sendEmail({
+          to: existingUser[0].email,
+          subject: 'Verify your RoomieSync email',
+          html,
+          text
+        });
+
+        throw redirect(302, '/verify-email/pending');
+      }
+
       return fail(400, {
         error: 'An account with this email already exists',
         name,
@@ -78,7 +99,7 @@ export const actions: Actions = {
       parallelism: 1
     });
 
-    // Create user
+    // Create user (not verified yet)
     const userId = generateId();
     const now = new Date();
 
@@ -87,18 +108,26 @@ export const actions: Actions = {
       email: email.toLowerCase(),
       hashedPassword,
       name,
+      emailVerified: false,
       createdAt: now,
       updatedAt: now
     });
 
-    // Create session
-    const sessionToken = await createSession(userId);
-    const sessionCookie = createSessionCookie(sessionToken);
-    cookies.set(sessionCookie.name, sessionCookie.value, {
-      path: '.',
-      ...sessionCookie.attributes
+    // Create verification token and send email
+    const token = await createEmailVerificationToken(userId);
+    const verificationLink = `${url.origin}/verify-email?token=${token}`;
+    const { html, text } = getEmailVerificationEmail({
+      userName: name,
+      verificationLink
     });
 
-    throw redirect(302, '/');
+    await sendEmail({
+      to: email.toLowerCase(),
+      subject: 'Verify your RoomieSync email',
+      html,
+      text
+    });
+
+    throw redirect(302, '/verify-email/pending');
   }
 };

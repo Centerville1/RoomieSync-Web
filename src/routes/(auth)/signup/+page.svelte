@@ -36,6 +36,7 @@
           label="Password"
           bind:value={password}
           required
+          showPasswordToggle
         />
 
         <Input
@@ -45,6 +46,7 @@
           label="Confirm Password"
           bind:value={confirmPassword}
           required
+          showPasswordToggle
         />
 
         <Button type="submit" variant="primary" fullWidth size="lg">Create Account</Button>

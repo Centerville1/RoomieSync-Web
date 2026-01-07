@@ -65,6 +65,15 @@ export const actions: Actions = {
       });
     }
 
+    // Check if email is verified
+    if (!user.emailVerified) {
+      return fail(400, {
+        error:
+          'Please verify your email before logging in. Check your inbox for a verification link.',
+        email
+      });
+    }
+
     // Create session
     const sessionToken = await createSession(user.id);
     const sessionCookie = createSessionCookie(sessionToken);

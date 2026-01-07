@@ -1,9 +1,10 @@
 <script lang="ts">
-  import type { PageData } from './$types';
+  import type { PageData, ActionData } from './$types';
   import Card from '$lib/components/Card.svelte';
   import Button from '$lib/components/Button.svelte';
   import Badge from '$lib/components/Badge.svelte';
   import Input from '$lib/components/Input.svelte';
+  import Header from '$lib/components/Header.svelte';
   import InviteMemberModal from './InviteMemberModal.svelte';
   import SplitCostModal from './SplitCostModal.svelte';
   import PayExpensesModal from './PayExpensesModal.svelte';
@@ -13,7 +14,7 @@
   import ExpenseGrid from './ExpenseGrid.svelte';
   import BalanceChart from './BalanceChart.svelte';
 
-  let { data }: { data: PageData } = $props();
+  let { data, form }: { data: PageData; form: ActionData } = $props();
   let showSplitCostModal = $state(false);
   let showInviteModal = $state(false);
   let showPayExpensesModal = $state(false);
@@ -134,26 +135,7 @@
 </script>
 
 <div class="household-container">
-  <!-- Main Navigation (same as home page) -->
-  <nav class="navbar">
-    <div class="container">
-      <div class="nav-left">
-        <a href="/" class="logo-container">
-          <img src="/icon-nobg.png" alt="RoomieSync" class="logo-icon" />
-          <h2 class="logo">RoomieSync</h2>
-        </a>
-        <a href="/" class="back-link">
-          <Button variant="ghost" size="sm">← Back to Households</Button>
-        </a>
-      </div>
-      <div class="nav-links">
-        <span>Welcome, {data.userName}!</span>
-        <form method="POST" action="/logout">
-          <Button variant="outline" type="submit">Sign Out</Button>
-        </form>
-      </div>
-    </div>
-  </nav>
+  <Header user={{ name: data.userName }} showBackButton />
 
   <!-- Household Header -->
   <header class="household-header">
@@ -299,7 +281,7 @@
 />
 
 <!-- Invite Member Modal -->
-<InviteMemberModal bind:open={showInviteModal} pendingInvites={data.pendingInvites} />
+<InviteMemberModal bind:open={showInviteModal} pendingInvites={data.pendingInvites} {form} />
 
 <!-- Edit Expense Modal -->
 <EditExpenseModal
@@ -329,59 +311,6 @@
   .household-container {
     min-height: 100vh;
     background-color: var(--color-bg-secondary);
-  }
-
-  /* Main Navigation */
-  .navbar {
-    background: var(--color-bg-primary);
-    border-bottom: 1px solid var(--color-border);
-    padding: var(--space-md) 0;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-  }
-
-  .navbar .container {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .nav-left {
-    display: flex;
-    align-items: center;
-    gap: var(--space-lg);
-  }
-
-  .logo-container {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    text-decoration: none;
-  }
-
-  .logo-icon {
-    height: 3.5rem;
-  }
-
-  .logo {
-    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    font-size: 1.5rem;
-    font-weight: 700;
-    margin: 0;
-  }
-
-  .back-link {
-    text-decoration: none;
-  }
-
-  .nav-links {
-    display: flex;
-    gap: var(--space-md);
-    align-items: center;
   }
 
   /* Household Header */
@@ -580,18 +509,6 @@
   }
 
   @media (max-width: 768px) {
-    .nav-left {
-      gap: var(--space-sm);
-    }
-
-    .logo {
-      display: none;
-    }
-
-    .nav-links span {
-      display: none;
-    }
-
     .header-content {
       flex-direction: column;
       align-items: flex-start;

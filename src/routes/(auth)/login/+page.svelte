@@ -32,6 +32,7 @@
           label="Password"
           bind:value={password}
           required
+          showPasswordToggle
         />
 
         <div class="forgot-password">

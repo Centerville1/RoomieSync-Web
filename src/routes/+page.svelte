@@ -4,6 +4,7 @@
   import Card from '$lib/components/Card.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import Input from '$lib/components/Input.svelte';
+  import Header from '$lib/components/Header.svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -17,29 +18,7 @@
 </script>
 
 <div class="home-container">
-  <nav class="navbar">
-    <div class="container">
-      <div class="logo-container">
-        <img src="/icon-nobg.png" alt="RoomieSync" class="logo-icon" />
-        <h2 class="logo">RoomieSync</h2>
-      </div>
-      <div class="nav-links">
-        {#if data.user}
-          <span>Welcome, {data.user.name}!</span>
-          <form method="POST" action="/logout">
-            <Button variant="outline" type="submit">Sign Out</Button>
-          </form>
-        {:else}
-          <a href="/signup">
-            <Button variant="primary">Sign Up</Button>
-          </a>
-          <a href="/login">
-            <Button variant="secondary">Sign In</Button>
-          </a>
-        {/if}
-      </div>
-    </div>
-  </nav>
+  <Header user={data.user} />
 
   <main class="container">
     {#if data.user}
@@ -175,44 +154,6 @@
 <style>
   .home-container {
     min-height: 100vh;
-  }
-
-  .navbar {
-    background: var(--color-bg-primary);
-    border-bottom: 1px solid var(--color-border);
-    padding: var(--space-md) 0;
-  }
-
-  .navbar .container {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .logo-container {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-  }
-
-  .logo-icon {
-    height: 3.5rem;
-  }
-
-  .logo {
-    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    font-size: 1.5rem;
-    font-weight: 700;
-    margin: 0;
-  }
-
-  .nav-links {
-    display: flex;
-    gap: var(--space-md);
-    align-items: center;
   }
 
   main {

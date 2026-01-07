@@ -47,6 +47,7 @@
             label="New Password"
             bind:value={password}
             required
+            showPasswordToggle
           />
 
           <Input
@@ -56,6 +57,7 @@
             label="Confirm New Password"
             bind:value={confirmPassword}
             required
+            showPasswordToggle
           />
 
           <Button type="submit" variant="secondary" fullWidth size="lg">Reset Password</Button>

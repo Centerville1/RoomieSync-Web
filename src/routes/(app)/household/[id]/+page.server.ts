@@ -11,6 +11,8 @@ import {
 } from '$lib/server/db/schema';
 import { eq, and, desc, inArray, count, sql } from 'drizzle-orm';
 import { generateId } from '$lib/server/utils';
+import { sendEmail } from '$lib/server/email';
+import { getHouseholdInviteEmail } from '$lib/server/email/templates';
 
 const PAGE_SIZE = 20;
 
@@ -378,17 +380,21 @@ export const actions: Actions = {
     return { success: true };
   },
 
-  inviteMember: async ({ request, locals, params }) => {
+  inviteMember: async ({ request, locals, params, url }) => {
     if (!locals.user) {
       throw redirect(302, '/login');
     }
 
     const householdId = params.id;
 
-    // Verify user is an admin
-    const membership = await db
-      .select()
+    // Verify user is an admin and get household info
+    const householdData = await db
+      .select({
+        householdName: households.name,
+        role: householdMembers.role
+      })
       .from(householdMembers)
+      .innerJoin(households, eq(households.id, householdMembers.householdId))
       .where(
         and(
           eq(householdMembers.householdId, householdId),
@@ -397,11 +403,11 @@ export const actions: Actions = {
       )
       .limit(1);
 
-    if (membership.length === 0) {
+    if (householdData.length === 0) {
       throw error(403, 'You are not a member of this household');
     }
 
-    if (membership[0].role !== 'admin') {
+    if (householdData[0].role !== 'admin') {
       throw error(403, 'Only admins can invite members');
     }
 
@@ -453,7 +459,27 @@ export const actions: Actions = {
       createdAt: new Date()
     });
 
-    return { success: true };
+    // Send invite email
+    const { html, text } = getHouseholdInviteEmail({
+      householdName: householdData[0].householdName,
+      inviterName: locals.user.name,
+      signupLink: `${url.origin}/signup`,
+      loginLink: `${url.origin}/login`
+    });
+
+    const emailSent = await sendEmail({
+      to: email.toLowerCase(),
+      subject: `You're invited to join ${householdData[0].householdName} on RoomieSync`,
+      html,
+      text
+    });
+
+    if (!emailSent) {
+      // Invite was created but email failed - return success with warning
+      return { success: true, emailFailed: true };
+    }
+
+    return { success: true, emailSent: true };
   },
 
   cancelInvite: async ({ request, locals, params }) => {
@@ -494,6 +520,81 @@ export const actions: Actions = {
     await db.delete(invites).where(eq(invites.id, inviteId));
 
     return { success: true };
+  },
+
+  resendInvite: async ({ request, locals, params, url }) => {
+    if (!locals.user) {
+      throw redirect(302, '/login');
+    }
+
+    const householdId = params.id;
+
+    // Verify user is an admin and get household info
+    const householdData = await db
+      .select({
+        householdName: households.name,
+        role: householdMembers.role
+      })
+      .from(householdMembers)
+      .innerJoin(households, eq(households.id, householdMembers.householdId))
+      .where(
+        and(
+          eq(householdMembers.householdId, householdId),
+          eq(householdMembers.userId, locals.user.id)
+        )
+      )
+      .limit(1);
+
+    if (householdData.length === 0) {
+      throw error(403, 'You are not a member of this household');
+    }
+
+    if (householdData[0].role !== 'admin') {
+      throw error(403, 'Only admins can resend invites');
+    }
+
+    const formData = await request.formData();
+    const inviteId = formData.get('inviteId') as string;
+
+    if (!inviteId) {
+      return fail(400, { error: 'Invalid invite' });
+    }
+
+    // Get the invite
+    const invite = await db
+      .select()
+      .from(invites)
+      .where(and(eq(invites.id, inviteId), eq(invites.householdId, householdId)))
+      .limit(1);
+
+    if (invite.length === 0) {
+      return fail(400, { error: 'Invite not found' });
+    }
+
+    if (invite[0].used) {
+      return fail(400, { error: 'This invite has already been used' });
+    }
+
+    // Send invite email
+    const { html, text } = getHouseholdInviteEmail({
+      householdName: householdData[0].householdName,
+      inviterName: locals.user.name,
+      signupLink: `${url.origin}/signup`,
+      loginLink: `${url.origin}/login`
+    });
+
+    const emailSent = await sendEmail({
+      to: invite[0].invitedEmail,
+      subject: `You're invited to join ${householdData[0].householdName} on RoomieSync`,
+      html,
+      text
+    });
+
+    if (!emailSent) {
+      return fail(500, { error: 'Failed to send email. Please try again.' });
+    }
+
+    return { success: true, resent: true };
   },
 
   updateDisplayName: async ({ request, locals, params }) => {
