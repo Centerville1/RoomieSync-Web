@@ -30,6 +30,8 @@
     "@node-rs/argon2": "^2.0.0",
     "@vercel/analytics": "^1.6.1",
     "chart.js": "^4.5.1",
+    "chartjs-adapter-date-fns": "^3.0.0",
+    "date-fns": "^4.1.0",
     "drizzle-kit": "^0.31.8",
     "drizzle-orm": "^0.45.1",
     "resend": "^6.6.0"
