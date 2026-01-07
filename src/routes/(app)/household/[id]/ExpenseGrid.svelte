@@ -44,6 +44,8 @@
     onSplitCost?: () => void;
     isAdmin?: boolean;
     onImportExpense?: (memberId: string) => void;
+    onPayExpenses?: () => void;
+    onCancelPayment?: (expense: Expense) => void;
   };
 
   let {
@@ -59,11 +61,31 @@
     onDeleteExpense,
     onSplitCost,
     isAdmin = false,
-    onImportExpense
+    onImportExpense,
+    onPayExpenses,
+    onCancelPayment
   }: Props = $props();
 
   // Track hover state for the split cost row
   let splitCostRowHovered = $state(false);
+
+  // Fullscreen state
+  let isFullscreen = $state(false);
+
+  function toggleFullscreen() {
+    isFullscreen = !isFullscreen;
+    if (isFullscreen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+  }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape' && isFullscreen) {
+      toggleFullscreen();
+    }
+  }
 
   // Sort members to show current user first
   const sortedMembers = $derived(
@@ -76,6 +98,117 @@
 
   let scrollContainer: HTMLDivElement;
   let isLoadingMore = $state(false);
+
+  // Drag-to-scroll state
+  let isDragging = $state(false);
+  let startX = $state(0);
+  let startY = $state(0);
+  let scrollLeft = $state(0);
+  let scrollTop = $state(0);
+
+  // Momentum/inertia state
+  let velocityX = $state(0);
+  let velocityY = $state(0);
+  let lastMoveTime = $state(0);
+  let lastX = $state(0);
+  let lastY = $state(0);
+  let momentumAnimationId: number | null = null;
+
+  const FRICTION = 0.92; // How quickly momentum slows (0-1, higher = slower decay)
+  const MIN_VELOCITY = 0.5; // Stop animating below this threshold
+
+  function handleMouseDown(e: MouseEvent) {
+    // Don't start drag if clicking on interactive elements
+    const target = e.target as HTMLElement;
+    if (target.closest('button, a, input, [role="button"]')) return;
+
+    // Cancel any ongoing momentum animation
+    if (momentumAnimationId !== null) {
+      cancelAnimationFrame(momentumAnimationId);
+      momentumAnimationId = null;
+    }
+
+    isDragging = true;
+    startX = e.pageX - scrollContainer.offsetLeft;
+    startY = e.pageY - scrollContainer.offsetTop;
+    scrollLeft = scrollContainer.scrollLeft;
+    scrollTop = scrollContainer.scrollTop;
+
+    // Initialize velocity tracking
+    lastX = e.pageX;
+    lastY = e.pageY;
+    lastMoveTime = Date.now();
+    velocityX = 0;
+    velocityY = 0;
+
+    scrollContainer.style.cursor = 'grabbing';
+    scrollContainer.style.userSelect = 'none';
+  }
+
+  function handleMouseMove(e: MouseEvent) {
+    if (!isDragging) return;
+    e.preventDefault();
+
+    const now = Date.now();
+    const dt = now - lastMoveTime;
+
+    // Calculate velocity (pixels per ms)
+    if (dt > 0) {
+      velocityX = (e.pageX - lastX) / dt;
+      velocityY = (e.pageY - lastY) / dt;
+    }
+
+    lastX = e.pageX;
+    lastY = e.pageY;
+    lastMoveTime = now;
+
+    const x = e.pageX - scrollContainer.offsetLeft;
+    const y = e.pageY - scrollContainer.offsetTop;
+    const walkX = (x - startX) * 1.5;
+    const walkY = (y - startY) * 1.5;
+    scrollContainer.scrollLeft = scrollLeft - walkX;
+    scrollContainer.scrollTop = scrollTop - walkY;
+  }
+
+  function applyMomentum() {
+    // Apply velocity (convert from px/ms to px/frame, assuming ~16ms frames)
+    scrollContainer.scrollLeft -= velocityX * 16;
+    scrollContainer.scrollTop -= velocityY * 16;
+
+    // Apply friction
+    velocityX *= FRICTION;
+    velocityY *= FRICTION;
+
+    // Continue animation if velocity is above threshold
+    if (Math.abs(velocityX) > MIN_VELOCITY / 16 || Math.abs(velocityY) > MIN_VELOCITY / 16) {
+      momentumAnimationId = requestAnimationFrame(applyMomentum);
+    } else {
+      momentumAnimationId = null;
+    }
+  }
+
+  function handleMouseUp() {
+    if (!isDragging) return;
+    isDragging = false;
+    scrollContainer.style.cursor = 'grab';
+    scrollContainer.style.userSelect = '';
+
+    // Only apply momentum if there's significant velocity
+    // and the last move was recent (within 50ms)
+    const timeSinceLastMove = Date.now() - lastMoveTime;
+    if (
+      timeSinceLastMove < 50 &&
+      (Math.abs(velocityX) > MIN_VELOCITY / 16 || Math.abs(velocityY) > MIN_VELOCITY / 16)
+    ) {
+      momentumAnimationId = requestAnimationFrame(applyMomentum);
+    }
+  }
+
+  function handleMouseLeave() {
+    if (isDragging) {
+      handleMouseUp();
+    }
+  }
 
   function getMemberDisplayName(member: Member) {
     return member.displayName || member.name;
@@ -167,9 +300,44 @@
   });
 </script>
 
-<div class="expense-grid-wrapper">
+<svelte:window onkeydown={handleKeydown} />
+
+<div class="expense-grid-wrapper" class:fullscreen={isFullscreen}>
+  <!-- Fullscreen toggle button -->
+  <button
+    type="button"
+    class="fullscreen-btn"
+    title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Enter fullscreen'}
+    onclick={toggleFullscreen}
+  >
+    {#if isFullscreen}
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path
+          d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"
+        />
+      </svg>
+    {:else}
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path
+          d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"
+        />
+      </svg>
+    {/if}
+  </button>
+
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <!-- Scrollable container for both header and content -->
-  <div class="scroll-container" bind:this={scrollContainer}>
+  <div
+    class="scroll-container"
+    class:dragging={isDragging}
+    bind:this={scrollContainer}
+    onmousedown={handleMouseDown}
+    onmousemove={handleMouseMove}
+    onmouseup={handleMouseUp}
+    onmouseleave={handleMouseLeave}
+    role="region"
+    aria-label="Expense grid - drag to scroll"
+  >
     <div class="grid-content" style="--member-count: {sortedMembers.length}">
       <!-- Sticky header -->
       <div class="grid-header">
@@ -253,6 +421,7 @@
           {@const isSelectable = isSelectableByCurrentUser(expense)}
           {@const isSelected = selectedExpenseIds.has(expense.id)}
           {@const needsToPay = isSelectable && !expense.isOptional}
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
           <div
             class="grid-row"
             class:selectable={isSelectable}
@@ -260,10 +429,16 @@
             class:needs-to-pay={needsToPay}
             onclick={isSelectable ? () => toggleExpenseSelection(expense.id) : undefined}
             onkeydown={isSelectable
-              ? (e) => e.key === 'Enter' && toggleExpenseSelection(expense.id)
+              ? (e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleExpenseSelection(expense.id);
+                  }
+                }
               : undefined}
             role={isSelectable ? 'button' : undefined}
-            tabindex={isSelectable ? 0 : undefined}
+            tabindex={isSelectable ? 0 : null}
+            aria-pressed={isSelectable ? isSelected : undefined}
           >
             {#each sortedMembers as member}
               {@const status = getPaymentStatus(expense, member.id)}
@@ -325,20 +500,41 @@
                 {:else if status === 'paid'}
                   {@const split = expense.splits.find((s) => s.userId === member.id)}
                   {@const paidAt = split?.paidAt}
-                  <div class="paid-status">
-                    <span class="status-icon paid" title="Paid">✓</span>
-                    {#if isMyExpense && paidAt}
-                      <span class="paid-info">
-                        Paid you {formatCurrency(getUserShare(expense))}
-                        <span class="paid-date">{formatShortDateTime(paidAt)}</span>
-                      </span>
-                    {:else if isMyColumn && paidAt}
+                  {@const canCancel = isMyColumn && !isMyExpense && onCancelPayment}
+                  {#if canCancel}
+                    <button
+                      type="button"
+                      class="paid-status clickable"
+                      title="Click to cancel payment"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        onCancelPayment?.(expense);
+                      }}
+                    >
+                      <span class="status-icon paid">✓</span>
                       <span class="paid-info you-paid">
                         You paid {formatCurrency(getUserShare(expense))}
-                        <span class="paid-date">{formatShortDateTime(paidAt)}</span>
+                        {#if paidAt}
+                          <span class="paid-date">{formatShortDateTime(paidAt)}</span>
+                        {/if}
                       </span>
-                    {/if}
-                  </div>
+                    </button>
+                  {:else}
+                    <div class="paid-status">
+                      <span class="status-icon paid" title="Paid">✓</span>
+                      {#if isMyExpense && paidAt}
+                        <span class="paid-info">
+                          Paid you {formatCurrency(getUserShare(expense))}
+                          <span class="paid-date">{formatShortDateTime(paidAt)}</span>
+                        </span>
+                      {:else if isMyColumn && paidAt}
+                        <span class="paid-info you-paid">
+                          You paid {formatCurrency(getUserShare(expense))}
+                          <span class="paid-date">{formatShortDateTime(paidAt)}</span>
+                        </span>
+                      {/if}
+                    </div>
+                  {/if}
                 {:else if status === 'unpaid'}
                   {#if expense.isOptional}
                     <div class="optional-status">
@@ -404,6 +600,13 @@
       {/if}
     </div>
   </div>
+
+  <!-- Floating Pay Button (visible in fullscreen when expenses selected) -->
+  {#if isFullscreen && selectedExpenseIds.size > 0 && onPayExpenses}
+    <button type="button" class="floating-pay-btn" onclick={onPayExpenses}>
+      Pay Expenses ({selectedExpenseIds.size})
+    </button>
+  {/if}
 </div>
 
 <style>
@@ -418,10 +621,63 @@
     position: relative;
   }
 
+  .expense-grid-wrapper.fullscreen {
+    position: fixed;
+    inset: 0;
+    max-height: none;
+    margin: 0;
+    border-radius: 0;
+    z-index: 100;
+  }
+
+  .fullscreen-btn {
+    position: absolute;
+    top: var(--space-sm);
+    right: var(--space-sm);
+    z-index: 10;
+    width: 32px;
+    height: 32px;
+    padding: 6px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-secondary);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .fullscreen-btn:hover {
+    background-color: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+    border-color: var(--color-text-tertiary);
+  }
+
+  .fullscreen-btn svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .fullscreen .fullscreen-btn {
+    top: var(--space-md);
+    right: var(--space-md);
+  }
+
   .scroll-container {
     overflow: auto;
     flex: 1;
     min-height: 0;
+    cursor: grab;
+  }
+
+  .scroll-container.dragging {
+    cursor: grabbing;
+  }
+
+  .scroll-container.dragging * {
+    cursor: grabbing;
   }
 
   .grid-content {
@@ -497,18 +753,39 @@
   }
 
   .expense-grid {
-    display: grid;
-    grid-template-columns: repeat(var(--member-count), minmax(150px, 1fr));
+    display: flex;
+    flex-direction: column;
   }
 
   .grid-row {
-    display: contents;
+    display: grid;
+    grid-template-columns: repeat(var(--member-count), minmax(150px, 1fr));
+    grid-column: 1 / -1;
+  }
+
+  .grid-row:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+  }
+
+  .grid-row:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
   }
 
   /* Split the Cost row styles */
   .split-cost-row {
-    display: contents;
     cursor: pointer;
+  }
+
+  .split-cost-row:focus {
+    outline: 2px solid var(--color-success);
+    outline-offset: -2px;
+  }
+
+  .split-cost-row:focus-visible {
+    outline: 2px solid var(--color-success);
+    outline-offset: -2px;
   }
 
   .split-cost-row .split-cost-cell {
@@ -780,6 +1057,44 @@
     gap: var(--space-xs);
   }
 
+  button.paid-status.clickable {
+    background: none;
+    border: 1px solid transparent;
+    padding: var(--space-sm);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  button.paid-status.clickable:hover {
+    background-color: rgba(34, 197, 94, 0.1);
+    border-color: var(--color-success);
+  }
+
+  button.paid-status.clickable:hover .status-icon.paid {
+    background-color: rgba(245, 158, 11, 0.15);
+    color: var(--color-warning, #f59e0b);
+  }
+
+  button.paid-status.clickable:hover .paid-info {
+    color: var(--color-warning, #f59e0b);
+  }
+
+  button.paid-status.clickable:hover::after {
+    content: 'Click to undo';
+    position: absolute;
+    bottom: -18px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.625rem;
+    color: var(--color-warning, #f59e0b);
+    white-space: nowrap;
+  }
+
+  button.paid-status.clickable {
+    position: relative;
+  }
+
   .paid-info {
     font-size: 0.7rem;
     color: var(--color-success);
@@ -915,5 +1230,47 @@
     border-style: solid;
     background-color: var(--color-secondary);
     color: white;
+  }
+
+  /* Floating Pay Button for fullscreen mode */
+  .floating-pay-btn {
+    position: absolute;
+    bottom: var(--space-xl);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    padding: var(--space-md) var(--space-xl);
+    font-size: 1rem;
+    font-weight: 600;
+    color: white;
+    background-color: var(--color-primary, #ff7a4d);
+    border: none;
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s ease;
+    animation: slideUp 0.2s ease;
+  }
+
+  .floating-pay-btn:hover {
+    background-color: var(--color-primary-hover, #e56a3d);
+    transform: translateX(-50%) translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  }
+
+  .floating-pay-btn:active {
+    transform: translateX(-50%) translateY(0);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateX(-50%) translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
   }
 </style>

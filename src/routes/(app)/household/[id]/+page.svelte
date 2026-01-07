@@ -11,6 +11,7 @@
   import EditExpenseModal from './EditExpenseModal.svelte';
   import DeleteExpenseModal from './DeleteExpenseModal.svelte';
   import ImportExpenseModal from './ImportExpenseModal.svelte';
+  import CancelPaymentModal from './CancelPaymentModal.svelte';
   import ExpenseGrid from './ExpenseGrid.svelte';
   import BalanceChart from './BalanceChart.svelte';
 
@@ -21,11 +22,12 @@
   let showEditExpenseModal = $state(false);
   let showDeleteExpenseModal = $state(false);
   let showImportExpenseModal = $state(false);
+  let showCancelPaymentModal = $state(false);
   let importExpenseDefaultCreatorId = $state('');
   let editingMemberId = $state<string | null>(null);
   let editDisplayName = $state('');
 
-  // Expense being edited/deleted
+  // Expense being edited/deleted/cancel payment
   type Expense = {
     id: string;
     description: string;
@@ -37,6 +39,7 @@
   };
   let selectedExpenseForEdit = $state<Expense | null>(null);
   let selectedExpenseForDelete = $state<Expense | null>(null);
+  let selectedExpenseForCancelPayment = $state<Expense | null>(null);
 
   function handleEditExpense(expense: Expense) {
     selectedExpenseForEdit = expense;
@@ -51,6 +54,11 @@
   function handleImportExpense(memberId: string) {
     importExpenseDefaultCreatorId = memberId;
     showImportExpenseModal = true;
+  }
+
+  function handleCancelPayment(expense: Expense) {
+    selectedExpenseForCancelPayment = expense;
+    showCancelPaymentModal = true;
   }
 
   // Expense selection state
@@ -199,6 +207,8 @@
         onSplitCost={() => (showSplitCostModal = true)}
         isAdmin={data.userRole === 'admin'}
         onImportExpense={handleImportExpense}
+        onPayExpenses={handlePayExpensesClick}
+        onCancelPayment={handleCancelPayment}
       />
       <div class="pay-button-container">
         <Button
@@ -306,6 +316,14 @@
     defaultCreatorId={importExpenseDefaultCreatorId}
   />
 {/if}
+
+<!-- Cancel Payment Modal -->
+<CancelPaymentModal
+  bind:open={showCancelPaymentModal}
+  expense={selectedExpenseForCancelPayment}
+  members={data.members}
+  currentUserId={data.currentUserId}
+/>
 
 <style>
   .household-container {

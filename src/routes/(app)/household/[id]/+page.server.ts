@@ -1003,5 +1003,69 @@ export const actions: Actions = {
     await db.insert(expenseSplits).values(splits);
 
     return { success: true };
+  },
+
+  cancelPayment: async ({ request, locals, params }) => {
+    if (!locals.user) {
+      throw redirect(302, '/login');
+    }
+
+    const householdId = params.id;
+    const currentUserId = locals.user.id;
+
+    // Verify user is a member
+    const membership = await db
+      .select()
+      .from(householdMembers)
+      .where(
+        and(
+          eq(householdMembers.householdId, householdId),
+          eq(householdMembers.userId, currentUserId)
+        )
+      )
+      .limit(1);
+
+    if (membership.length === 0) {
+      throw error(403, 'You are not a member of this household');
+    }
+
+    const formData = await request.formData();
+    const expenseId = formData.get('expenseId') as string;
+
+    if (!expenseId) {
+      return fail(400, { error: 'Expense ID is required' });
+    }
+
+    // Verify the expense exists and user has a paid split for it
+    const split = await db
+      .select()
+      .from(expenseSplits)
+      .innerJoin(expenses, eq(expenseSplits.expenseId, expenses.id))
+      .where(
+        and(
+          eq(expenseSplits.expenseId, expenseId),
+          eq(expenseSplits.userId, currentUserId),
+          eq(expenses.householdId, householdId),
+          eq(expenseSplits.hasPaid, true)
+        )
+      )
+      .limit(1);
+
+    if (split.length === 0) {
+      return fail(400, { error: 'No paid split found for this expense' });
+    }
+
+    // Don't allow canceling if you're the expense creator
+    if (split[0].expenses.creatorId === currentUserId) {
+      return fail(400, { error: 'Cannot cancel payment on your own expense' });
+    }
+
+    // Update expense split to mark as unpaid
+    await db
+      .update(expenseSplits)
+      .set({ hasPaid: false, paidAt: null })
+      .where(and(eq(expenseSplits.expenseId, expenseId), eq(expenseSplits.userId, currentUserId)));
+
+    return { success: true };
   }
 };
