@@ -67,6 +67,9 @@
     background: var(--color-bg-primary);
     border-bottom: 1px solid var(--color-border);
     padding: var(--space-md) 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
   }
 
   .navbar .container {

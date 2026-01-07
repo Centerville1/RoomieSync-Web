@@ -193,3 +193,92 @@ RoomieSync - Shared Expense Tracking
 
   return { html, text };
 }
+
+interface NudgeReminderEmailParams {
+  recipientName: string;
+  senderName: string;
+  householdName: string;
+  amountOwed: number;
+  customMessage?: string;
+  householdLink: string;
+}
+
+export function getNudgeReminderEmail({
+  recipientName,
+  senderName,
+  householdName,
+  amountOwed,
+  customMessage,
+  householdLink
+}: NudgeReminderEmailParams) {
+  const formattedAmount = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD'
+  }).format(amountOwed);
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f5f5f5; padding: 20px; margin: 0;">
+  <div style="max-width: 480px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <img src="${LOGO_URL}" alt="RoomieSync" style="height: 40px; width: auto;" />
+    </div>
+    <h1 style="color: #FF7A4D; margin: 0 0 16px 0; font-size: 24px;">Time to Sync Up!</h1>
+    <p style="color: #333; line-height: 1.6; margin: 0 0 24px 0;">
+      Hi ${recipientName},
+    </p>
+    <p style="color: #333; line-height: 1.6; margin: 0 0 16px 0;">
+      <strong>${senderName}</strong> sent you a friendly reminder about some shared expenses in <strong>${householdName}</strong>.
+    </p>${
+      customMessage
+        ? `
+    <div style="background-color: #f0f4ff; border-left: 4px solid #6B7FFF; padding: 12px 16px; margin: 0 0 24px 0;">
+      <p style="margin: 0; color: #333; font-style: italic;">"${customMessage}"</p>
+      <p style="margin: 8px 0 0 0; color: #666; font-size: 12px;">- ${senderName}</p>
+    </div>`
+        : ''
+    }
+    <div style="background-color: #f8f9fa; border-radius: 8px; padding: 16px; margin: 0 0 24px 0; text-align: center;">
+      <span style="font-size: 14px; color: #666;">Your Balance</span>
+      <div style="font-size: 28px; font-weight: 700; color: #FF7A4D; margin-top: 4px;">${formattedAmount}</div>
+    </div>
+    <a href="${householdLink}" style="display: inline-block; background: linear-gradient(135deg, #FF7A4D 0%, #6B7FFF 100%); color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600;">
+      Sync up in RoomieSync
+    </a>
+    <p style="color: #666; font-size: 14px; line-height: 1.6; margin: 24px 0 0 0;">
+      Once you've settled up, hop into RoomieSync to mark your expenses as paid.
+    </p>
+    <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">
+    <p style="color: #999; font-size: 12px; margin: 0;">
+      RoomieSync - Shared Expense Tracking
+    </p>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+Time to Sync Up!
+
+Hi ${recipientName},
+
+${senderName} sent you a friendly reminder about some shared expenses in ${householdName}.
+${customMessage ? `\n"${customMessage}"\n- ${senderName}\n` : ''}
+Your Balance: ${formattedAmount}
+
+Sync up here:
+${householdLink}
+
+Once you've settled up, hop into RoomieSync to mark your expenses as paid.
+
+---
+RoomieSync - Shared Expense Tracking
+  `.trim();
+
+  return { html, text };
+}

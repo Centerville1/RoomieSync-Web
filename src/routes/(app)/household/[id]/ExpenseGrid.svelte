@@ -30,6 +30,11 @@
     youOweOptional: number;
   };
 
+  type NudgeSent = {
+    toUserId: string;
+    createdAt: Date;
+  };
+
   type Props = {
     members?: Member[];
     expenses?: Expense[];
@@ -46,6 +51,8 @@
     onImportExpense?: (memberId: string) => void;
     onPayExpenses?: () => void;
     onCancelPayment?: (expense: Expense) => void;
+    nudgesSent?: NudgeSent[];
+    onNudge?: (memberId: string, memberName: string, amountOwed: number) => void;
   };
 
   let {
@@ -63,7 +70,9 @@
     isAdmin = false,
     onImportExpense,
     onPayExpenses,
-    onCancelPayment
+    onCancelPayment,
+    nudgesSent = [],
+    onNudge
   }: Props = $props();
 
   // Track hover state for the split cost row
@@ -210,6 +219,49 @@
     }
   }
 
+  // Check if user can be nudged (owes you money AND you don't owe them)
+  function canNudge(memberId: string): { canNudge: boolean; reason?: string } {
+    const balance = memberBalances[memberId];
+    if (!balance) return { canNudge: false, reason: 'No balance data' };
+
+    const theyOweYou = balance.owesYou > 0;
+    const youOweThem = balance.youOwe > 0;
+
+    if (!theyOweYou) {
+      return { canNudge: false, reason: "They don't owe you money" };
+    }
+
+    if (youOweThem) {
+      return { canNudge: false, reason: 'Settle your debts first' };
+    }
+
+    // Check cooldown
+    const recentNudge = nudgesSent.find((n) => n.toUserId === memberId);
+    if (recentNudge) {
+      const hoursAgo = Math.floor(
+        (Date.now() - new Date(recentNudge.createdAt).getTime()) / (60 * 60 * 1000)
+      );
+      const hoursRemaining = 24 - hoursAgo;
+      if (hoursRemaining > 0) {
+        return { canNudge: false, reason: `Wait ${hoursRemaining}h to nudge again` };
+      }
+    }
+
+    return { canNudge: true };
+  }
+
+  function getNudgeBadgeText(memberId: string): string | null {
+    const recentNudge = nudgesSent.find((n) => n.toUserId === memberId);
+    if (!recentNudge) return null;
+
+    const hoursAgo = Math.floor(
+      (Date.now() - new Date(recentNudge.createdAt).getTime()) / (60 * 60 * 1000)
+    );
+    if (hoursAgo >= 24) return null;
+
+    return `Reminded ${hoursAgo}h ago`;
+  }
+
   function getMemberDisplayName(member: Member) {
     return member.displayName || member.name;
   }
@@ -344,6 +396,8 @@
         {#each sortedMembers as member}
           {@const isCurrentUser = member.id === currentUserId}
           {@const balance = memberBalances[member.id]}
+          {@const nudgeStatus = !isCurrentUser ? canNudge(member.id) : null}
+          {@const nudgeBadge = !isCurrentUser ? getNudgeBadgeText(member.id) : null}
           <div class="member-header" class:current-user={isCurrentUser}>
             <span class="member-name">
               {getMemberDisplayName(member)}{#if isCurrentUser}
@@ -377,6 +431,43 @@
                   {/if}
                 </div>
               </div>
+
+              <!-- Nudge button section -->
+              {#if hasOwesYou && onNudge}
+                <div class="nudge-section">
+                  {#if nudgeBadge}
+                    <span class="nudge-badge">{nudgeBadge}</span>
+                  {/if}
+                  <div class="nudge-btn-wrapper">
+                    <button
+                      type="button"
+                      class="nudge-btn"
+                      disabled={!nudgeStatus?.canNudge}
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        if (nudgeStatus?.canNudge) {
+                          onNudge(member.id, getMemberDisplayName(member), balance.owesYou);
+                        }
+                      }}
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        class="nudge-icon"
+                      >
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                      </svg>
+                      Remind
+                    </button>
+                    {#if !nudgeStatus?.canNudge && nudgeStatus?.reason}
+                      <span class="nudge-tooltip">{nudgeStatus.reason}</span>
+                    {/if}
+                  </div>
+                </div>
+              {/if}
             {/if}
           </div>
         {/each}
@@ -1272,5 +1363,90 @@
       opacity: 1;
       transform: translateX(-50%) translateY(0);
     }
+  }
+
+  /* Nudge button styles */
+  .nudge-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-xs);
+    margin-top: var(--space-sm);
+  }
+
+  .nudge-badge {
+    font-size: 0.625rem;
+    padding: 2px 6px;
+    background-color: rgba(107, 127, 255, 0.15);
+    color: var(--color-secondary, #6b7fff);
+    border-radius: var(--radius-sm);
+  }
+
+  .nudge-btn-wrapper {
+    position: relative;
+    display: inline-block;
+  }
+
+  .nudge-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: var(--space-xs) var(--space-sm);
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--color-primary);
+    background-color: transparent;
+    border: 1px solid var(--color-primary);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .nudge-btn:hover:not(:disabled) {
+    background-color: var(--color-primary);
+    color: white;
+  }
+
+  .nudge-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    border-color: var(--color-border);
+    color: var(--color-text-tertiary);
+  }
+
+  .nudge-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  .nudge-tooltip {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 10px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: white;
+    background-color: #333;
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  }
+
+  .nudge-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: #333;
+  }
+
+  .nudge-btn-wrapper:hover .nudge-tooltip {
+    display: block;
   }
 </style>

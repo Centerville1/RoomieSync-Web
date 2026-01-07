@@ -7,12 +7,13 @@ import {
   users,
   expenses,
   expenseSplits,
-  invites
+  invites,
+  nudgeHistory
 } from '$lib/server/db/schema';
-import { eq, and, desc, inArray, count, sql } from 'drizzle-orm';
+import { eq, and, desc, inArray, count, sql, gt } from 'drizzle-orm';
 import { generateId } from '$lib/server/utils';
 import { sendEmail } from '$lib/server/email';
-import { getHouseholdInviteEmail } from '$lib/server/email/templates';
+import { getHouseholdInviteEmail, getNudgeReminderEmail } from '$lib/server/email/templates';
 import { createInviteSignature } from '$lib/server/invite-signature';
 
 const PAGE_SIZE = 20;
@@ -296,6 +297,26 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     isOptional: event.isOptional
   }));
 
+  // Fetch recent nudges involving the current user (within 24 hours)
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  const recentNudges = await db
+    .select({
+      id: nudgeHistory.id,
+      fromUserId: nudgeHistory.fromUserId,
+      toUserId: nudgeHistory.toUserId,
+      customMessage: nudgeHistory.customMessage,
+      createdAt: nudgeHistory.createdAt
+    })
+    .from(nudgeHistory)
+    .where(
+      and(eq(nudgeHistory.householdId, householdId), gt(nudgeHistory.createdAt, twentyFourHoursAgo))
+    );
+
+  // Separate into: nudges I sent, nudges I received
+  const nudgesSent = recentNudges.filter((n) => n.fromUserId === currentUserId);
+  const nudgesReceived = recentNudges.filter((n) => n.toUserId === currentUserId);
+
   return {
     household: householdData[0].household,
     userRole: householdData[0].member.role,
@@ -307,7 +328,9 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     hasMoreExpenses: totalExpenses > PAGE_SIZE,
     pendingInvites,
     memberBalances,
-    balanceHistory
+    balanceHistory,
+    nudgesSent,
+    nudgesReceived
   };
 };
 
@@ -1082,5 +1105,112 @@ export const actions: Actions = {
       .where(and(eq(expenseSplits.expenseId, expenseId), eq(expenseSplits.userId, currentUserId)));
 
     return { success: true };
+  },
+
+  sendNudge: async ({ request, locals, params, url }) => {
+    if (!locals.user) {
+      throw redirect(302, '/login');
+    }
+
+    const householdId = params.id;
+    const currentUserId = locals.user.id;
+
+    // Verify user is a member and get household name
+    const householdData = await db
+      .select({
+        householdName: households.name,
+        member: householdMembers
+      })
+      .from(householdMembers)
+      .innerJoin(households, eq(households.id, householdMembers.householdId))
+      .where(
+        and(
+          eq(householdMembers.householdId, householdId),
+          eq(householdMembers.userId, currentUserId)
+        )
+      )
+      .limit(1);
+
+    if (householdData.length === 0) {
+      throw error(403, 'You are not a member of this household');
+    }
+
+    const formData = await request.formData();
+    const toUserId = formData.get('toUserId') as string;
+    const customMessage = (formData.get('customMessage') as string)?.trim() || null;
+    const amountOwed = parseFloat(formData.get('amountOwed') as string);
+
+    if (!toUserId) {
+      return fail(400, { error: 'Recipient is required' });
+    }
+
+    // Verify recipient is a member and get their info
+    const recipientMember = await db
+      .select({
+        userId: householdMembers.userId,
+        userName: users.name,
+        userEmail: users.email
+      })
+      .from(householdMembers)
+      .innerJoin(users, eq(householdMembers.userId, users.id))
+      .where(
+        and(eq(householdMembers.householdId, householdId), eq(householdMembers.userId, toUserId))
+      )
+      .limit(1);
+
+    if (recipientMember.length === 0) {
+      return fail(400, { error: 'Recipient is not a member of this household' });
+    }
+
+    // Check 24-hour rate limit
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recentNudge = await db
+      .select()
+      .from(nudgeHistory)
+      .where(
+        and(
+          eq(nudgeHistory.householdId, householdId),
+          eq(nudgeHistory.fromUserId, currentUserId),
+          eq(nudgeHistory.toUserId, toUserId),
+          gt(nudgeHistory.createdAt, twentyFourHoursAgo)
+        )
+      )
+      .limit(1);
+
+    if (recentNudge.length > 0) {
+      const hoursRemaining = Math.ceil(
+        (recentNudge[0].createdAt.getTime() + 24 * 60 * 60 * 1000 - Date.now()) / (60 * 60 * 1000)
+      );
+      return fail(429, { error: `Please wait ${hoursRemaining} hours before nudging again` });
+    }
+
+    // Insert nudge record
+    await db.insert(nudgeHistory).values({
+      id: generateId(),
+      householdId,
+      fromUserId: currentUserId,
+      toUserId,
+      customMessage,
+      createdAt: new Date()
+    });
+
+    // Send email notification
+    const { html, text } = getNudgeReminderEmail({
+      recipientName: recipientMember[0].userName,
+      senderName: locals.user.name,
+      householdName: householdData[0].householdName,
+      amountOwed,
+      customMessage: customMessage || undefined,
+      householdLink: `${url.origin}/household/${householdId}`
+    });
+
+    await sendEmail({
+      to: recipientMember[0].userEmail,
+      subject: `${locals.user.name} sent you a reminder in ${householdData[0].householdName}`,
+      html,
+      text
+    });
+
+    return { success: true, nudgeSent: true };
   }
 };

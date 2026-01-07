@@ -12,8 +12,10 @@
   import DeleteExpenseModal from './DeleteExpenseModal.svelte';
   import ImportExpenseModal from './ImportExpenseModal.svelte';
   import CancelPaymentModal from './CancelPaymentModal.svelte';
+  import NudgeModal from './NudgeModal.svelte';
   import ExpenseGrid from './ExpenseGrid.svelte';
   import BalanceChart from './BalanceChart.svelte';
+  import { onMount } from 'svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
   let showSplitCostModal = $state(false);
@@ -23,7 +25,17 @@
   let showDeleteExpenseModal = $state(false);
   let showImportExpenseModal = $state(false);
   let showCancelPaymentModal = $state(false);
+  let showNudgeModal = $state(false);
   let importExpenseDefaultCreatorId = $state('');
+
+  // Nudge state
+  let nudgeRecipientId = $state('');
+  let nudgeRecipientName = $state('');
+  let nudgeAmountOwed = $state(0);
+
+  // Toast state for received nudges
+  let showNudgeToast = $state(false);
+  let nudgeToastData = $state<{ senderName: string; amount: number } | null>(null);
   let editingMemberId = $state<string | null>(null);
   let editDisplayName = $state('');
 
@@ -60,6 +72,40 @@
     selectedExpenseForCancelPayment = expense;
     showCancelPaymentModal = true;
   }
+
+  function handleNudge(memberId: string, memberName: string, amountOwed: number) {
+    nudgeRecipientId = memberId;
+    nudgeRecipientName = memberName;
+    nudgeAmountOwed = amountOwed;
+    showNudgeModal = true;
+  }
+
+  function handleNudgeSent() {
+    // The page will reload with updated data after form submission
+  }
+
+  // Show toast if user was nudged recently and still owes money
+  onMount(() => {
+    if (data.nudgesReceived && data.nudgesReceived.length > 0) {
+      const latestNudge = data.nudgesReceived[0];
+      const sender = data.members.find((m) => m.id === latestNudge.fromUserId);
+      const balance = data.memberBalances[latestNudge.fromUserId];
+
+      // Only show toast if you still owe them money
+      if (sender && balance && balance.youOwe > 0) {
+        nudgeToastData = {
+          senderName: sender.displayName || sender.name,
+          amount: balance.youOwe
+        };
+        showNudgeToast = true;
+
+        // Auto-hide after 8 seconds
+        setTimeout(() => {
+          showNudgeToast = false;
+        }, 8000);
+      }
+    }
+  });
 
   // Expense selection state
   let selectedExpenseIds = $state<Set<string>>(new Set());
@@ -209,6 +255,8 @@
         onImportExpense={handleImportExpense}
         onPayExpenses={handlePayExpensesClick}
         onCancelPayment={handleCancelPayment}
+        nudgesSent={data.nudgesSent}
+        onNudge={handleNudge}
       />
       <div class="pay-button-container">
         <Button
@@ -324,6 +372,40 @@
   members={data.members}
   currentUserId={data.currentUserId}
 />
+
+<!-- Nudge Modal -->
+<NudgeModal
+  bind:open={showNudgeModal}
+  recipientId={nudgeRecipientId}
+  recipientName={nudgeRecipientName}
+  amountOwed={nudgeAmountOwed}
+  onNudgeSent={handleNudgeSent}
+/>
+
+<!-- Nudge Toast Notification -->
+{#if showNudgeToast && nudgeToastData}
+  <div class="nudge-toast" role="alert">
+    <div class="toast-content">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        class="toast-icon"
+      >
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+        <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+      </svg>
+      <div class="toast-text">
+        <strong>{nudgeToastData.senderName}</strong> is requesting payment of
+        <strong>{formatCurrency(nudgeToastData.amount)}</strong>
+      </div>
+    </div>
+    <button type="button" class="toast-close" onclick={() => (showNudgeToast = false)}>
+      &times;
+    </button>
+  </div>
+{/if}
 
 <style>
   .household-container {
@@ -543,5 +625,71 @@
     .header-info h1 {
       font-size: 1.5rem;
     }
+  }
+
+  /* Nudge Toast Styles */
+  .nudge-toast {
+    position: fixed;
+    top: var(--space-lg);
+    right: var(--space-lg);
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-md);
+    max-width: 400px;
+    padding: var(--space-md);
+    background-color: var(--color-bg-primary);
+    border: 1px solid var(--color-primary);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    z-index: 1000;
+    animation: toastSlideIn 0.3s ease-out;
+  }
+
+  @keyframes toastSlideIn {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  .toast-content {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-sm);
+  }
+
+  .toast-icon {
+    width: 24px;
+    height: 24px;
+    color: var(--color-primary);
+    flex-shrink: 0;
+  }
+
+  .toast-text {
+    font-size: 0.875rem;
+    color: var(--color-text-primary);
+    line-height: 1.4;
+  }
+
+  .toast-text strong {
+    color: var(--color-primary);
+  }
+
+  .toast-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+  }
+
+  .toast-close:hover {
+    color: var(--color-text-primary);
   }
 </style>

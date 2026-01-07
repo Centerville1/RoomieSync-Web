@@ -149,3 +149,22 @@ export const emailVerificationTokens = sqliteTable('email_verification_tokens', 
 
 export type EmailVerificationToken = typeof emailVerificationTokens.$inferSelect;
 export type NewEmailVerificationToken = typeof emailVerificationTokens.$inferInsert;
+
+// Nudge history table - tracks payment reminders between users
+export const nudgeHistory = sqliteTable('nudge_history', {
+  id: text('id').primaryKey(),
+  householdId: text('household_id')
+    .notNull()
+    .references(() => households.id, { onDelete: 'cascade' }),
+  fromUserId: text('from_user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  toUserId: text('to_user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  customMessage: text('custom_message'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
+});
+
+export type NudgeHistory = typeof nudgeHistory.$inferSelect;
+export type NewNudgeHistory = typeof nudgeHistory.$inferInsert;
