@@ -1,13 +1,21 @@
 <script lang="ts">
-  import type { ActionData } from './$types';
+  import type { ActionData, PageData } from './$types';
   import Button from '$lib/components/Button.svelte';
   import Card from '$lib/components/Card.svelte';
   import Input from '$lib/components/Input.svelte';
 
-  let { form }: { form: ActionData } = $props();
+  let { form, data }: { form: ActionData; data: PageData } = $props();
 
-  let email = $derived(form?.email ?? '');
+  // Use prefilled email from invite link, or fall back to form state
+  let email = $state(data.prefillEmail || '');
   let password = $state('');
+
+  // Update email if form returns it (after validation error)
+  $effect(() => {
+    if (form?.email) {
+      email = form.email;
+    }
+  });
 </script>
 
 <div class="auth-container">
@@ -17,6 +25,10 @@
       <p class="subtitle">Sign in to your RoomieSync account</p>
 
       <form method="POST" class="auth-form">
+        {#if data.justVerified}
+          <div class="success-message">Your email has been verified! You can now sign in.</div>
+        {/if}
+
         {#if form?.error}
           <div class="error-message">
             {form.error}
@@ -96,6 +108,16 @@
     border-radius: var(--radius-md);
     color: var(--color-error);
     font-size: 0.875rem;
+  }
+
+  .success-message {
+    padding: var(--space-md);
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid #22c55e;
+    border-radius: var(--radius-md);
+    color: #16a34a;
+    font-size: 0.875rem;
+    text-align: center;
   }
 
   .auth-footer {

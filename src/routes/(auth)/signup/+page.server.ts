@@ -1,28 +1,45 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { db } from '$lib/server/db/client';
-import { users } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { users, invites } from '$lib/server/db/schema';
+import { eq, and } from 'drizzle-orm';
 import { hash } from '@node-rs/argon2';
 import { generateId } from '$lib/server/utils';
 import { createEmailVerificationToken } from '$lib/server/email-verification';
 import { sendEmail } from '$lib/server/email';
 import { getEmailVerificationEmail } from '$lib/server/email/templates';
+import { verifyInviteSignature } from '$lib/server/invite-signature';
+import { createSession, createSessionCookie } from '$lib/server/auth';
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
   if (locals.user) {
     throw redirect(302, '/');
   }
-  return {};
+
+  // Get invite parameters from URL for prefilling
+  const email = url.searchParams.get('email') || '';
+  const inviteId = url.searchParams.get('invite') || '';
+  const sig = url.searchParams.get('sig') || '';
+
+  return {
+    prefillEmail: email,
+    inviteId,
+    sig
+  };
 };
 
 export const actions: Actions = {
-  default: async ({ request, url }) => {
+  default: async ({ request, url, cookies }) => {
     const formData = await request.formData();
     const name = formData.get('name');
     const email = formData.get('email');
     const password = formData.get('password');
     const confirmPassword = formData.get('confirmPassword');
+
+    // Get invite params from hidden fields
+    const inviteId = formData.get('inviteId') as string | null;
+    const sig = formData.get('sig') as string | null;
+    const originalEmail = formData.get('originalEmail') as string | null;
 
     // Validation
     if (typeof name !== 'string' || !name || name.length < 2) {
@@ -57,11 +74,34 @@ export const actions: Actions = {
       });
     }
 
+    const normalizedEmail = email.toLowerCase();
+
+    // Check if this signup should be auto-verified via invite link
+    let autoVerified = false;
+    if (inviteId && sig && originalEmail) {
+      // Only auto-verify if email matches the original invite email
+      if (normalizedEmail === originalEmail.toLowerCase()) {
+        // Verify the signature is valid
+        const signatureValid = await verifyInviteSignature(inviteId, normalizedEmail, sig);
+        if (signatureValid) {
+          // Verify the invite exists and is unused
+          const invite = await db
+            .select()
+            .from(invites)
+            .where(and(eq(invites.id, inviteId), eq(invites.used, false)))
+            .limit(1);
+          if (invite.length > 0 && invite[0].invitedEmail === normalizedEmail) {
+            autoVerified = true;
+          }
+        }
+      }
+    }
+
     // Check if user already exists
     const existingUser = await db
       .select()
       .from(users)
-      .where(eq(users.email, email.toLowerCase()))
+      .where(eq(users.email, normalizedEmail))
       .limit(1);
 
     if (existingUser.length > 0) {
@@ -99,19 +139,30 @@ export const actions: Actions = {
       parallelism: 1
     });
 
-    // Create user (not verified yet)
+    // Create user (verified if coming from valid invite link with unchanged email)
     const userId = generateId();
     const now = new Date();
 
     await db.insert(users).values({
       id: userId,
-      email: email.toLowerCase(),
+      email: normalizedEmail,
       hashedPassword,
       name,
-      emailVerified: false,
+      emailVerified: autoVerified,
       createdAt: now,
       updatedAt: now
     });
+
+    if (autoVerified) {
+      // Skip email verification - log them in directly
+      const sessionToken = await createSession(userId);
+      const sessionCookie = createSessionCookie(sessionToken);
+      cookies.set(sessionCookie.name, sessionCookie.value, {
+        path: '.',
+        ...sessionCookie.attributes
+      });
+      throw redirect(302, '/');
+    }
 
     // Create verification token and send email
     const token = await createEmailVerificationToken(userId);
@@ -122,7 +173,7 @@ export const actions: Actions = {
     });
 
     await sendEmail({
-      to: email.toLowerCase(),
+      to: normalizedEmail,
       subject: 'Verify your RoomieSync email',
       html,
       text

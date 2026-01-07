@@ -159,20 +159,11 @@ export function getHouseholdInviteEmail({
     <p style="color: #333; line-height: 1.6; margin: 0 0 24px 0;">
       RoomieSync makes it easy to track shared expenses and coordinate payments with your roommates.
     </p>
-    <p style="color: #333; line-height: 1.6; margin: 0 0 16px 0;">
-      <strong>Already have an account?</strong>
-    </p>
-    <a href="${loginLink}" style="display: inline-block; background: linear-gradient(135deg, #FF7A4D 0%, #6B7FFF 100%); color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; margin-bottom: 24px;">
-      Log In to Accept
-    </a>
-    <p style="color: #333; line-height: 1.6; margin: 24px 0 16px 0;">
-      <strong>New to RoomieSync?</strong>
-    </p>
-    <a href="${signupLink}" style="display: inline-block; background: #6B7FFF; color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600;">
+    <a href="${signupLink}" style="display: inline-block; background: #FF7A4D; color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600;">
       Sign Up Now
     </a>
     <p style="color: #666; font-size: 14px; line-height: 1.6; margin: 24px 0 0 0;">
-      Once you log in or sign up with this email address, you'll see the invite waiting for you.
+      Already have an account? <a href="${loginLink}" style="color: #6B7FFF; text-decoration: none; font-weight: 600;">Log in here</a>
     </p>
     <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">
     <p style="color: #999; font-size: 12px; margin: 0;">
@@ -190,13 +181,11 @@ ${inviterName} has invited you to join ${householdName} on RoomieSync.
 
 RoomieSync makes it easy to track shared expenses and coordinate payments with your roommates.
 
-Already have an account? Log in here:
-${loginLink}
-
-New to RoomieSync? Sign up here:
+Sign up here:
 ${signupLink}
 
-Once you log in or sign up with this email address, you'll see the invite waiting for you.
+Already have an account? Log in here:
+${loginLink}
 
 ---
 RoomieSync - Shared Expense Tracking

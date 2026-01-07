@@ -67,11 +67,13 @@
   // Insert "hold" points after each data point to create flat segments with smooth transitions
   // Returns both the points array and a parallel array indicating which points are "real" data points
   // transitionWidth is a fixed time duration for all transitions (based on total chart range)
+  // isControlPoint marks which input points should be hidden (first/last manually added points)
   function addHoldPoints(
     points: { date: Date; value: number }[],
-    transitionWidth: number
+    transitionWidth: number,
+    isControlPoint: boolean[]
   ): { points: { date: Date; value: number }[]; isDataPoint: boolean[] } {
-    if (points.length < 2) return { points, isDataPoint: points.map(() => true) };
+    if (points.length < 2) return { points, isDataPoint: points.map((_, i) => !isControlPoint[i]) };
 
     const result: { date: Date; value: number }[] = [];
     const isDataPoint: boolean[] = [];
@@ -83,9 +85,9 @@
       const current = points[i];
       const next = points[i + 1];
 
-      // Add the actual data point
+      // Add the actual data point (hidden if it's a control point)
       result.push(current);
-      isDataPoint.push(true);
+      isDataPoint.push(!isControlPoint[i]);
 
       // After each point (except the last), add control points to maintain flat segment
       if (next) {
@@ -182,30 +184,49 @@
     const lastOwedToYouValue =
       owedToYouPoints.length > 0 ? owedToYouPoints[owedToYouPoints.length - 1].value : 0;
 
+    // Determine if we need to add end points
+    const youOweNeedsEndPoint =
+      youOwePoints.length === 0 ||
+      new Date(youOwePoints[youOwePoints.length - 1].date).getTime() < latestDate;
+    const owedToYouNeedsEndPoint =
+      owedToYouPoints.length === 0 ||
+      new Date(owedToYouPoints[owedToYouPoints.length - 1].date).getTime() < latestDate;
+
     const youOweWithStartEnd = [
       { date: new Date(startDate), value: 0 },
       ...youOwePoints,
       // Add end point if the last point isn't already at the latest date
-      ...(youOwePoints.length === 0 ||
-      new Date(youOwePoints[youOwePoints.length - 1].date).getTime() < latestDate
-        ? [{ date: new Date(latestDate), value: lastYouOweValue }]
-        : [])
+      ...(youOweNeedsEndPoint ? [{ date: new Date(latestDate), value: lastYouOweValue }] : [])
     ];
     const owedToYouWithStartEnd = [
       { date: new Date(startDate), value: 0 },
       ...owedToYouPoints,
       // Add end point if the last point isn't already at the latest date
-      ...(owedToYouPoints.length === 0 ||
-      new Date(owedToYouPoints[owedToYouPoints.length - 1].date).getTime() < latestDate
-        ? [{ date: new Date(latestDate), value: lastOwedToYouValue }]
-        : [])
+      ...(owedToYouNeedsEndPoint ? [{ date: new Date(latestDate), value: lastOwedToYouValue }] : [])
+    ];
+
+    // Mark which points are control points (first and last manually added points should be hidden)
+    // Format: [start control point, ...real data points (false), optional end control point]
+    const youOweIsControlPoint = [
+      true, // start point is a control point
+      ...youOwePoints.map(() => false), // real data points
+      ...(youOweNeedsEndPoint ? [true] : []) // end point is a control point if added
+    ];
+    const owedToYouIsControlPoint = [
+      true, // start point is a control point
+      ...owedToYouPoints.map(() => false), // real data points
+      ...(owedToYouNeedsEndPoint ? [true] : []) // end point is a control point if added
     ];
 
     // Add hold points for smooth step-like transitions
     // Use 3% of total range as fixed transition width for visual consistency
     const transitionWidth = rangeMs * 0.03;
-    const youOweResult = addHoldPoints(youOweWithStartEnd, transitionWidth);
-    const owedToYouResult = addHoldPoints(owedToYouWithStartEnd, transitionWidth);
+    const youOweResult = addHoldPoints(youOweWithStartEnd, transitionWidth, youOweIsControlPoint);
+    const owedToYouResult = addHoldPoints(
+      owedToYouWithStartEnd,
+      transitionWidth,
+      owedToYouIsControlPoint
+    );
 
     // Convert to {x, y} format for time scale
     const youOweData = youOweResult.points.map((p) => ({

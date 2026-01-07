@@ -13,6 +13,7 @@ import { eq, and, desc, inArray, count, sql } from 'drizzle-orm';
 import { generateId } from '$lib/server/utils';
 import { sendEmail } from '$lib/server/email';
 import { getHouseholdInviteEmail } from '$lib/server/email/templates';
+import { createInviteSignature } from '$lib/server/invite-signature';
 
 const PAGE_SIZE = 20;
 
@@ -449,22 +450,30 @@ export const actions: Actions = {
     }
 
     // Create invite
+    const inviteId = generateId();
+    const normalizedEmail = email.toLowerCase();
     await db.insert(invites).values({
-      id: generateId(),
+      id: inviteId,
       householdId,
-      invitedEmail: email.toLowerCase(),
+      invitedEmail: normalizedEmail,
       token: generateId(),
       createdBy: locals.user.id,
       used: false,
       createdAt: new Date()
     });
 
+    // Generate signed URLs for the invite email
+    const signature = await createInviteSignature(inviteId, normalizedEmail);
+    const emailParam = encodeURIComponent(normalizedEmail);
+    const signupLink = `${url.origin}/signup?email=${emailParam}&invite=${inviteId}&sig=${signature}`;
+    const loginLink = `${url.origin}/login?email=${emailParam}`;
+
     // Send invite email
     const { html, text } = getHouseholdInviteEmail({
       householdName: householdData[0].householdName,
       inviterName: locals.user.name,
-      signupLink: `${url.origin}/signup`,
-      loginLink: `${url.origin}/login`
+      signupLink,
+      loginLink
     });
 
     const emailSent = await sendEmail({
@@ -575,12 +584,18 @@ export const actions: Actions = {
       return fail(400, { error: 'This invite has already been used' });
     }
 
+    // Generate signed URLs for the invite email
+    const signature = await createInviteSignature(inviteId, invite[0].invitedEmail);
+    const emailParam = encodeURIComponent(invite[0].invitedEmail);
+    const signupLink = `${url.origin}/signup?email=${emailParam}&invite=${inviteId}&sig=${signature}`;
+    const loginLink = `${url.origin}/login?email=${emailParam}`;
+
     // Send invite email
     const { html, text } = getHouseholdInviteEmail({
       householdName: householdData[0].householdName,
       inviterName: locals.user.name,
-      signupLink: `${url.origin}/signup`,
-      loginLink: `${url.origin}/login`
+      signupLink,
+      loginLink
     });
 
     const emailSent = await sendEmail({

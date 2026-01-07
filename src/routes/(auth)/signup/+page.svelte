@@ -1,15 +1,26 @@
 <script lang="ts">
-  import type { ActionData } from './$types';
+  import type { ActionData, PageData } from './$types';
   import Button from '$lib/components/Button.svelte';
   import Card from '$lib/components/Card.svelte';
   import Input from '$lib/components/Input.svelte';
 
-  let { form }: { form: ActionData } = $props();
+  let { form, data }: { form: ActionData; data: PageData } = $props();
 
+  // Use prefilled email from invite link, or fall back to form state
   let name = $derived(form?.name ?? '');
-  let email = $derived(form?.email ?? '');
+  let email = $state(data.prefillEmail || '');
   let password = $state('');
   let confirmPassword = $state('');
+
+  // Track if email was prefilled from invite
+  const fromInvite = data.prefillEmail && data.inviteId && data.sig;
+
+  // Update email if form returns it (after validation error)
+  $effect(() => {
+    if (form?.email) {
+      email = form.email;
+    }
+  });
 </script>
 
 <div class="auth-container">
@@ -23,6 +34,14 @@
           <div class="error-message">
             {form.error}
           </div>
+        {/if}
+
+        {#if fromInvite}
+          <div class="invite-notice">You're signing up from an invite link.</div>
+          <!-- Hidden fields to pass invite data -->
+          <input type="hidden" name="inviteId" value={data.inviteId} />
+          <input type="hidden" name="sig" value={data.sig} />
+          <input type="hidden" name="originalEmail" value={data.prefillEmail} />
         {/if}
 
         <Input type="text" id="name" name="name" label="Name" bind:value={name} required />
@@ -106,6 +125,16 @@
     border-radius: var(--radius-md);
     color: var(--color-error);
     font-size: 0.875rem;
+  }
+
+  .invite-notice {
+    padding: var(--space-md);
+    background: rgba(107, 127, 255, 0.1);
+    border: 1px solid var(--color-secondary);
+    border-radius: var(--radius-md);
+    color: var(--color-secondary);
+    font-size: 0.875rem;
+    text-align: center;
   }
 
   .auth-footer {

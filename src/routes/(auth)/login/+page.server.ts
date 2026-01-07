@@ -6,11 +6,19 @@ import { users } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { verify } from '@node-rs/argon2';
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
   if (locals.user) {
     throw redirect(302, '/');
   }
-  return {};
+
+  // Get prefill parameters from URL
+  const email = url.searchParams.get('email') || '';
+  const verified = url.searchParams.get('verified') === '1';
+
+  return {
+    prefillEmail: email,
+    justVerified: verified
+  };
 };
 
 export const actions: Actions = {
