@@ -777,12 +777,18 @@
 
   .grid-header {
     display: grid;
-    grid-template-columns: repeat(var(--member-count), minmax(150px, 1fr));
+    grid-template-columns: repeat(var(--member-count), minmax(150px, 300px));
     background-color: var(--color-bg-tertiary);
     border-bottom: 2px solid var(--color-border);
     position: sticky;
     top: 0;
     z-index: 1;
+  }
+
+  @media (min-width: 768px) {
+    .grid-header {
+      grid-template-columns: repeat(var(--member-count), minmax(200px, 400px));
+    }
   }
 
   .member-header {
@@ -850,8 +856,14 @@
 
   .grid-row {
     display: grid;
-    grid-template-columns: repeat(var(--member-count), minmax(150px, 1fr));
+    grid-template-columns: repeat(var(--member-count), minmax(150px, 300px));
     grid-column: 1 / -1;
+  }
+
+  @media (min-width: 768px) {
+    .grid-row {
+      grid-template-columns: repeat(var(--member-count), minmax(200px, 400px));
+    }
   }
 
   .grid-row:focus {
@@ -1055,6 +1067,8 @@
     gap: var(--space-xs);
     text-align: center;
     max-width: calc(100% - 60px);
+    min-width: 0;
+    overflow: hidden;
   }
 
   .expense-actions {
@@ -1102,6 +1116,9 @@
     font-size: 0.875rem;
     color: var(--color-text-primary);
     font-weight: 500;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
   }
 
   .optional-badge {
@@ -1283,13 +1300,19 @@
   /* Import row styles */
   .import-row {
     display: grid;
-    grid-template-columns: repeat(var(--member-count), minmax(150px, 1fr));
+    grid-template-columns: repeat(var(--member-count), minmax(150px, 300px));
     border-top: 2px solid var(--color-border);
     background-color: var(--color-bg-tertiary);
     min-width: max-content;
     position: sticky;
     bottom: 0;
     z-index: 1;
+  }
+
+  @media (min-width: 768px) {
+    .import-row {
+      grid-template-columns: repeat(var(--member-count), minmax(200px, 400px));
+    }
   }
 
   .import-cell {
