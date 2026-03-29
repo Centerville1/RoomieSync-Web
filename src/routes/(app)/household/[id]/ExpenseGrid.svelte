@@ -329,6 +329,7 @@
     onSelectionChange(newSelection);
   }
 
+
   async function handleScroll() {
     if (!scrollContainer || !onLoadMore || !hasMore || isLoadingMore) return;
 
@@ -399,73 +400,57 @@
           {@const nudgeStatus = !isCurrentUser ? canNudge(member.id) : null}
           {@const nudgeBadge = !isCurrentUser ? getNudgeBadgeText(member.id) : null}
           <div class="member-header" class:current-user={isCurrentUser}>
-            <span class="member-name">
-              {getMemberDisplayName(member)}{#if isCurrentUser}
-                (You){/if}
-            </span>
+            <span class="member-name">{getMemberDisplayName(member)}{#if isCurrentUser} (You){/if}</span>
             {#if !isCurrentUser && balance}
-              {@const hasOwesYou = balance.owesYou > 0 || balance.owesYouOptional > 0}
-              {@const hasYouOwe = balance.youOwe > 0 || balance.youOweOptional > 0}
-              <div class="member-balance">
-                <div class="balance-items">
-                  {#if hasOwesYou}
-                    <span class="owes-you">Owes you: {formatCurrency(balance.owesYou)}</span>
-                    {#if balance.owesYouOptional > 0}
-                      <span class="balance-optional"
-                        ><span class="optional-badge">Optional</span>
-                        {formatCurrency(balance.owesYouOptional)}</span
-                      >
-                    {/if}
-                  {/if}
-                  {#if hasYouOwe}
-                    <span class="you-owe">You owe: {formatCurrency(balance.youOwe)}</span>
-                    {#if balance.youOweOptional > 0}
-                      <span class="balance-optional"
-                        ><span class="optional-badge">Optional</span>
-                        {formatCurrency(balance.youOweOptional)}</span
-                      >
-                    {/if}
-                  {/if}
-                  {#if !hasOwesYou && !hasYouOwe}
-                    <span class="settled">Settled up</span>
-                  {/if}
-                </div>
-              </div>
-
-              <!-- Nudge button section -->
+              {@const hasOwesYou = balance.owesYou > 0}
+              {@const hasYouOwe = balance.youOwe > 0}
+              {#if balance.owesYou > 0}
+                <span class="owes-you">Owes {formatCurrency(balance.owesYou)}</span>
+              {/if}
+              {#if balance.owesYouOptional > 0}
+                <span class="opt-amount">{formatCurrency(balance.owesYouOptional)} opt</span>
+              {/if}
+              {#if balance.youOwe > 0}
+                <span class="you-owe">You owe {formatCurrency(balance.youOwe)}</span>
+              {/if}
+              {#if balance.youOweOptional > 0}
+                <span class="opt-amount you-owe-opt">{formatCurrency(balance.youOweOptional)} opt</span>
+              {/if}
+              {#if !hasOwesYou && !hasYouOwe && balance.owesYouOptional === 0 && balance.youOweOptional === 0}
+                <span class="settled">✓</span>
+              {/if}
               {#if hasOwesYou && onNudge}
-                <div class="nudge-section">
-                  {#if nudgeBadge}
-                    <span class="nudge-badge">{nudgeBadge}</span>
-                  {/if}
-                  <div class="nudge-btn-wrapper">
-                    <button
-                      type="button"
-                      class="nudge-btn"
-                      disabled={!nudgeStatus?.canNudge}
-                      onclick={(e) => {
-                        e.stopPropagation();
-                        if (nudgeStatus?.canNudge) {
-                          onNudge(member.id, getMemberDisplayName(member), balance.owesYou);
-                        }
-                      }}
+                <div class="nudge-btn-wrapper">
+                  <button
+                    type="button"
+                    class="nudge-btn"
+                    title={nudgeBadge ?? (nudgeStatus?.canNudge ? 'Send a reminder' : nudgeStatus?.reason)}
+                    disabled={!nudgeStatus?.canNudge}
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      if (nudgeStatus?.canNudge) {
+                        onNudge(member.id, getMemberDisplayName(member), balance.owesYou);
+                      }
+                    }}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      class="nudge-icon"
                     >
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        class="nudge-icon"
-                      >
-                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                        <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                      </svg>
-                      Remind
-                    </button>
-                    {#if !nudgeStatus?.canNudge && nudgeStatus?.reason}
-                      <span class="nudge-tooltip">{nudgeStatus.reason}</span>
+                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                    </svg>
+                    <span class="nudge-label">Remind</span>
+                    {#if nudgeBadge}
+                      <span class="nudge-badge-inline">{nudgeBadge}</span>
                     {/if}
-                  </div>
+                  </button>
+                  {#if !nudgeStatus?.canNudge && nudgeStatus?.reason && !nudgeBadge}
+                    <span class="nudge-tooltip">{nudgeStatus.reason}</span>
+                  {/if}
                 </div>
               {/if}
             {/if}
@@ -573,12 +558,13 @@
                       </div>
                     {/if}
                     <div class="expense-info">
-                      <span class="expense-description">
-                        {expense.description} - {formatDateTime(expense.createdAt)}
+                      <span class="expense-description" title={expense.description}>
+                        {expense.description}
                         {#if expense.isOptional}
-                          <span class="optional-badge">Optional</span>
+                          <span class="optional-badge">Opt</span>
                         {/if}
                       </span>
+                      <span class="expense-date">{formatShortDateTime(expense.createdAt)}</span>
                       <span
                         class="expense-amount"
                         class:my-expense={isMyExpense}
@@ -604,7 +590,7 @@
                     >
                       <span class="status-icon paid">✓</span>
                       <span class="paid-info you-paid">
-                        You paid {formatCurrency(getUserShare(expense))}
+                        <span class="text-label">You paid </span>{formatCurrency(getUserShare(expense))}
                         {#if paidAt}
                           <span class="paid-date">{formatShortDateTime(paidAt)}</span>
                         {/if}
@@ -615,12 +601,12 @@
                       <span class="status-icon paid" title="Paid">✓</span>
                       {#if isMyExpense && paidAt}
                         <span class="paid-info">
-                          Paid you {formatCurrency(getUserShare(expense))}
+                          <span class="text-label">Paid you </span>{formatCurrency(getUserShare(expense))}
                           <span class="paid-date">{formatShortDateTime(paidAt)}</span>
                         </span>
                       {:else if isMyColumn && paidAt}
                         <span class="paid-info you-paid">
-                          You paid {formatCurrency(getUserShare(expense))}
+                          <span class="text-label">You paid </span>{formatCurrency(getUserShare(expense))}
                           <span class="paid-date">{formatShortDateTime(paidAt)}</span>
                         </span>
                       {/if}
@@ -645,13 +631,9 @@
                         >{isSelected && isMyColumn ? '☑' : '☐'}</span
                       >
                       {#if isMyExpense}
-                        <span class="owes-info"
-                          >Owes you {formatCurrency(getUserShare(expense))}</span
-                        >
+                        <span class="owes-info"><span class="text-label">Owes you </span>{formatCurrency(getUserShare(expense))}</span>
                       {:else if isMyColumn}
-                        <span class="you-owe-info"
-                          >You owe {formatCurrency(getUserShare(expense))}</span
-                        >
+                        <span class="you-owe-info"><span class="text-label">You owe </span>{formatCurrency(getUserShare(expense))}</span>
                       {/if}
                     </div>
                   {/if}
@@ -792,12 +774,12 @@
   }
 
   .member-header {
-    padding: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
     text-align: center;
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
-    justify-content: center;
+    align-items: center;
+    gap: 3px;
   }
 
   .member-header.current-user {
@@ -806,46 +788,34 @@
 
   .member-name {
     font-weight: 600;
+    font-size: 0.875rem;
     color: var(--color-text-primary);
   }
 
-  .member-balance {
-    display: flex;
-    justify-content: center;
+  .member-header .owes-you {
     font-size: 0.7rem;
     font-weight: 500;
-  }
-
-  .balance-items {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .member-balance .owes-you {
     color: var(--color-success);
   }
 
-  .member-balance .you-owe {
+  .member-header .you-owe {
+    font-size: 0.7rem;
+    font-weight: 500;
     color: var(--color-error);
   }
 
-  .member-balance .balance-optional {
-    color: var(--color-secondary, #6b7fff);
+  .member-header .opt-amount {
     font-size: 0.625rem;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding-left: var(--space-md);
-  }
-
-  .member-balance .balance-optional .optional-badge {
-    margin-left: 0;
-    background-color: rgba(107, 127, 255, 0.15);
     color: var(--color-secondary, #6b7fff);
   }
 
-  .member-balance .settled {
+  .member-header .you-owe-opt {
+    color: var(--color-error);
+    opacity: 0.7;
+  }
+
+  .member-header .settled {
+    font-size: 0.7rem;
     color: var(--color-text-tertiary);
   }
 
@@ -1116,9 +1086,19 @@
     font-size: 0.875rem;
     color: var(--color-text-primary);
     font-weight: 500;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    hyphens: auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+
+  .expense-date {
+    font-size: 0.7rem;
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
   }
 
   .optional-badge {
@@ -1215,6 +1195,9 @@
     display: block;
     color: var(--color-text-tertiary);
     font-weight: 400;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .unpaid-status {
@@ -1389,33 +1372,18 @@
   }
 
   /* Nudge button styles */
-  .nudge-section {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-xs);
-    margin-top: var(--space-sm);
-  }
-
-  .nudge-badge {
-    font-size: 0.625rem;
-    padding: 2px 6px;
-    background-color: rgba(107, 127, 255, 0.15);
-    color: var(--color-secondary, #6b7fff);
-    border-radius: var(--radius-sm);
-  }
-
   .nudge-btn-wrapper {
     position: relative;
     display: inline-block;
+    margin-top: 2px;
   }
 
   .nudge-btn {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
-    padding: var(--space-xs) var(--space-sm);
-    font-size: 0.75rem;
+    gap: 4px;
+    padding: 3px var(--space-sm);
+    font-size: 0.7rem;
     font-weight: 500;
     color: var(--color-primary);
     background-color: transparent;
@@ -1423,6 +1391,7 @@
     border-radius: var(--radius-md);
     cursor: pointer;
     transition: all 0.15s ease;
+    white-space: nowrap;
   }
 
   .nudge-btn:hover:not(:disabled) {
@@ -1431,15 +1400,21 @@
   }
 
   .nudge-btn:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
     border-color: var(--color-border);
     color: var(--color-text-tertiary);
   }
 
   .nudge-icon {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+  }
+
+  .nudge-badge-inline {
+    font-size: 0.6rem;
+    opacity: 0.8;
   }
 
   .nudge-tooltip {
@@ -1471,5 +1446,107 @@
 
   .nudge-btn-wrapper:hover .nudge-tooltip {
     display: block;
+  }
+
+  /* Mobile responsive overrides */
+  @media (max-width: 767px) {
+    .grid-content {
+      min-width: unset;
+      width: 100%;
+    }
+
+    .grid-header {
+      grid-template-columns: repeat(var(--member-count), minmax(110px, 1fr));
+    }
+
+    .grid-row {
+      grid-template-columns: repeat(var(--member-count), minmax(110px, 1fr));
+    }
+
+    .import-row {
+      grid-template-columns: repeat(var(--member-count), minmax(110px, 1fr));
+    }
+
+    /* Hide edit/delete buttons on mobile — no hover on touch devices */
+    .expense-actions {
+      display: none;
+    }
+
+    /* Remove space reserved for action buttons */
+    .expense-info {
+      max-width: 100%;
+    }
+
+    /* Prevent split cost title from wrapping */
+    .split-cost-title {
+      white-space: nowrap;
+      font-size: 0.7rem;
+    }
+
+    .member-header {
+      padding: var(--space-xs);
+      gap: 2px;
+    }
+
+    .member-name {
+      font-size: 0.75rem;
+    }
+
+    .nudge-label {
+      display: none;
+    }
+
+    .nudge-btn {
+      padding: 3px 6px;
+    }
+
+    .grid-cell {
+      padding: var(--space-xs);
+      min-height: 44px;
+    }
+
+    .expense-description {
+      font-size: 0.75rem;
+    }
+
+    .expense-date {
+      font-size: 0.6rem;
+    }
+
+    .expense-amount {
+      font-size: 0.75rem;
+    }
+
+    .split-cost-subtitle {
+      display: none;
+    }
+
+    .split-cost-logo {
+      width: 20px;
+      height: 20px;
+    }
+
+    .text-label {
+      display: none;
+    }
+
+    .paid-info {
+      font-size: 0.6rem;
+    }
+
+    .owes-info,
+    .you-owe-info {
+      font-size: 0.6rem;
+    }
+
+    .status-icon {
+      width: 1.5rem;
+      height: 1.5rem;
+      font-size: 1rem;
+    }
+
+    .optional-amount {
+      font-size: 0.6rem;
+    }
   }
 </style>

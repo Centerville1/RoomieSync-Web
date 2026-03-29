@@ -120,6 +120,11 @@
     }
   }
 
+  function handlePayAll() {
+    selectedExpenseIds = allSelectableExpenseIds;
+    showPayExpensesModal = true;
+  }
+
   function handlePaymentComplete() {
     selectedExpenseIds = new Set();
   }
@@ -133,6 +138,18 @@
     allExpenses = [...data.expenses];
     hasMoreExpenses = data.hasMoreExpenses;
   });
+
+  const allSelectableExpenseIds = $derived(
+    new Set(
+      allExpenses
+        .filter((e) => {
+          if (e.creatorId === data.currentUserId) return false;
+          const mySplit = e.splits.find((s) => s.userId === data.currentUserId);
+          return mySplit !== undefined && !mySplit.hasPaid;
+        })
+        .map((e) => e.id)
+    )
+  );
 
   async function loadMoreExpenses() {
     const response = await fetch(
@@ -237,8 +254,17 @@
 
     <!-- Expenses Grid Section -->
     <section class="expenses-grid-section">
-      <h2>Expenses</h2>
-      <p class="expense-helper-text">Click on red rows to select expenses to pay</p>
+      <div class="expenses-header">
+        <div>
+          <h2>Expenses</h2>
+          <p class="expense-helper-text">Click on red rows to select expenses to pay</p>
+        </div>
+        {#if allSelectableExpenseIds.size > 0}
+          <Button variant="primary" size="sm" on:click={handlePayAll}>
+            Pay All Expenses ({allSelectableExpenseIds.size})
+          </Button>
+        {/if}
+      </div>
       <ExpenseGrid
         members={data.members}
         expenses={allExpenses}
@@ -536,8 +562,25 @@
     color: var(--color-text-primary);
   }
 
+  .expenses-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
+  }
+
+  .expenses-header :global(.btn) {
+    flex-shrink: 0;
+    align-self: center;
+  }
+
+  .expenses-header h2 {
+    margin: 0 0 var(--space-xs) 0;
+  }
+
   .expense-helper-text {
-    margin: 0 0 var(--space-md) 0;
+    margin: 0;
     font-size: 0.875rem;
     color: var(--color-error, #ef4444);
   }

@@ -126,21 +126,36 @@
       {/each}
 
       <div class="payment-summary">
-        <!-- Summary header -->
-        <p class="summary-intro">
-          You selected <strong>{selectedExpenses.length}</strong>
-          {selectedExpenses.length === 1 ? 'expense' : 'expenses'} to pay, totaling
-          <strong>{formatCurrency(totalExpenseAmount)}</strong>
-        </p>
+        <!-- Hero: what you actually owe -->
+        <div class="your-share-section">
+          <div class="payment-list">
+            {#each amountsOwedByCreator() as payment}
+              <div class="payment-item">
+                <span class="payment-recipient">Send to {payment.name}</span>
+                <span class="payment-amount">{formatCurrency(payment.amount)}</span>
+              </div>
+            {/each}
+          </div>
 
-        <!-- Collapsible expense details -->
+          {#if amountsOwedByCreator().length > 1}
+            <div class="payment-summary-total">
+              <span class="summary-total-label">Total</span>
+              <span class="summary-total-amount">{formatCurrency(totalOwed)}</span>
+            </div>
+          {/if}
+        </div>
+
+        <!-- Collapsible expense breakdown -->
         <button
           type="button"
           class="expense-details-toggle"
           onclick={() => (showExpenseDetails = !showExpenseDetails)}
           aria-expanded={showExpenseDetails}
         >
-          <span>{showExpenseDetails ? 'Hide' : 'Show'} selected expenses</span>
+          <span>
+            {showExpenseDetails ? 'Hide' : 'Show'} {selectedExpenses.length}
+            {selectedExpenses.length === 1 ? 'expense' : 'expenses'} (totaling {formatCurrency(totalExpenseAmount)})
+          </span>
           <svg
             class="chevron"
             class:expanded={showExpenseDetails}
@@ -165,40 +180,16 @@
                 </div>
                 <div class="expense-detail-amounts">
                   <span class="expense-total-amount">{formatCurrency(expense.amount)}</span>
-                  <span class="expense-your-share"
-                    >Your share: {formatCurrency(expense.userShare)}</span
-                  >
+                  <span class="expense-your-share">Your share: {formatCurrency(expense.userShare)}</span>
                 </div>
               </div>
             {/each}
           </div>
         {/if}
 
-        <!-- Your Share section -->
-        <div class="your-share-section">
-          <h3 class="your-share-title">Your Share</h3>
-
-          <div class="payment-list">
-            {#each amountsOwedByCreator() as payment}
-              <div class="payment-item">
-                <span class="payment-recipient">Pay {payment.name}</span>
-                <span class="payment-amount">{formatCurrency(payment.amount)}</span>
-              </div>
-            {/each}
-          </div>
-
-          {#if amountsOwedByCreator().length > 1}
-            <div class="payment-summary-total">
-              <span class="summary-total-label">Total to Pay</span>
-              <span class="summary-total-amount">{formatCurrency(totalOwed)}</span>
-            </div>
-          {/if}
-        </div>
-
         <div class="payment-instructions">
           <p class="instructions-text">
-            Please send the amounts above via your preferred payment method (Venmo, Zelle, etc.),
-            then click "Mark as Paid" to record the payment.
+            Send the amounts above via Venmo, Zelle, etc., then click "Mark as Paid".
           </p>
         </div>
       </div>
@@ -216,16 +207,6 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-lg);
-  }
-
-  .summary-intro {
-    margin: 0;
-    color: var(--color-text-primary);
-    font-size: 1rem;
-  }
-
-  .summary-intro strong {
-    color: var(--color-primary);
   }
 
   /* Expense details toggle */
@@ -324,30 +305,23 @@
   .your-share-section {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
-  }
-
-  .your-share-title {
-    margin: 0;
-    font-size: 1.125rem;
-    font-weight: 600;
-    color: var(--color-text-primary);
+    gap: 0;
+    background-color: var(--color-bg-secondary);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    border: 1px solid var(--color-border);
   }
 
   .payment-list {
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
-    padding: var(--space-md);
-    background-color: var(--color-bg-secondary);
-    border-radius: var(--radius-md);
   }
 
   .payment-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: var(--space-sm) 0;
+    padding: var(--space-md) var(--space-lg);
   }
 
   .payment-item:not(:last-child) {
@@ -355,12 +329,14 @@
   }
 
   .payment-recipient {
+    font-size: 1rem;
     font-weight: 500;
     color: var(--color-text-primary);
   }
 
   .payment-amount {
-    font-weight: 600;
+    font-size: 1.25rem;
+    font-weight: 700;
     color: var(--color-error, #ef4444);
   }
 
