@@ -13,6 +13,7 @@
   import ImportExpenseModal from './ImportExpenseModal.svelte';
   import CancelPaymentModal from './CancelPaymentModal.svelte';
   import NudgeModal from './NudgeModal.svelte';
+  import HouseholdSettingsModal from './HouseholdSettingsModal.svelte';
   import ExpenseGrid from './ExpenseGrid.svelte';
   import BalanceChart from './BalanceChart.svelte';
   import { onMount } from 'svelte';
@@ -26,6 +27,7 @@
   let showImportExpenseModal = $state(false);
   let showCancelPaymentModal = $state(false);
   let showNudgeModal = $state(false);
+  let showSettingsModal = $state(false);
   let importExpenseDefaultCreatorId = $state('');
 
   // Nudge state
@@ -36,8 +38,6 @@
   // Toast state for received nudges
   let showNudgeToast = $state(false);
   let nudgeToastData = $state<{ senderName: string; amount: number } | null>(null);
-  let editingMemberId = $state<string | null>(null);
-  let editDisplayName = $state('');
 
   // Expense being edited/deleted/cancel payment
   type Expense = {
@@ -193,16 +193,6 @@
   function getMemberDisplayName(member: { displayName: string | null; name: string }) {
     return member.displayName || member.name;
   }
-
-  function startEditingDisplayName(memberId: string, currentDisplayName: string | null) {
-    editingMemberId = memberId;
-    editDisplayName = currentDisplayName || '';
-  }
-
-  function cancelEditingDisplayName() {
-    editingMemberId = null;
-    editDisplayName = '';
-  }
 </script>
 
 <div class="household-container">
@@ -226,6 +216,26 @@
           <Button variant="secondary" size="lg" on:click={() => (showInviteModal = true)}
             >Invite Members</Button
           >
+          <button
+            type="button"
+            class="settings-btn"
+            title="Household Settings"
+            onclick={() => (showSettingsModal = true)}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              width="22"
+              height="22"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+              />
+            </svg>
+          </button>
         {/if}
       </div>
     </div>
@@ -296,33 +306,15 @@
       </div>
     </section>
 
-    <!-- Members Section -->
-    <section class="members-section">
-      <h2>Members</h2>
-      <div class="members-grid">
-        {#each data.members as member}
-          <Card padding="md">
-            <div class="member-card">
-              <div class="member-info">
-                {#if editingMemberId === member.id}
-                  <form method="POST" action="?/updateDisplayName" class="edit-display-name-form">
-                    <input type="hidden" name="memberId" value={member.id} />
-                    <Input
-                      name="displayName"
-                      placeholder={member.name}
-                      bind:value={editDisplayName}
-                    />
-                    <div class="edit-actions">
-                      <Button type="submit" variant="primary" size="sm">Save</Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        on:click={cancelEditingDisplayName}>Cancel</Button
-                      >
-                    </div>
-                  </form>
-                {:else}
+    <!-- Members Section (non-admins only — admins manage members in settings) -->
+    {#if data.userRole !== 'admin'}
+      <section class="members-section">
+        <h2>Members</h2>
+        <div class="members-grid">
+          {#each data.members as member}
+            <Card padding="md">
+              <div class="member-card">
+                <div class="member-info">
                   <h3>
                     {getMemberDisplayName(member)}
                     {#if member.displayName}
@@ -330,24 +322,16 @@
                     {/if}
                   </h3>
                   <p class="member-email">{member.email}</p>
-                  {#if data.userRole === 'admin'}
-                    <button
-                      class="edit-name-btn"
-                      onclick={() => startEditingDisplayName(member.id, member.displayName)}
-                    >
-                      Edit display name
-                    </button>
-                  {/if}
+                </div>
+                {#if member.role === 'admin'}
+                  <Badge variant="primary">Admin</Badge>
                 {/if}
               </div>
-              {#if member.role === 'admin'}
-                <Badge variant="primary">Admin</Badge>
-              {/if}
-            </div>
-          </Card>
-        {/each}
-      </div>
-    </section>
+            </Card>
+          {/each}
+        </div>
+      </section>
+    {/if}
   </main>
 </div>
 
@@ -359,6 +343,7 @@
   bind:open={showPayExpensesModal}
   {selectedExpenseIds}
   expenses={allExpenses}
+  reverseExpenses={data.reverseExpenses}
   members={data.members}
   currentUserId={data.currentUserId}
   onPaymentComplete={handlePaymentComplete}
@@ -407,6 +392,17 @@
   amountOwed={nudgeAmountOwed}
   onNudgeSent={handleNudgeSent}
 />
+
+<!-- Household Settings Modal (Admin Only) -->
+{#if data.userRole === 'admin'}
+  <HouseholdSettingsModal
+    bind:open={showSettingsModal}
+    householdName={data.household.name}
+    householdId={data.household.id}
+    members={data.members}
+    currentUserId={data.currentUserId}
+  />
+{/if}
 
 <!-- Nudge Toast Notification -->
 {#if showNudgeToast && nudgeToastData}
@@ -490,6 +486,28 @@
   .header-actions {
     display: flex;
     gap: var(--space-md);
+    align-items: center;
+  }
+
+  .settings-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-secondary);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .settings-btn:hover {
+    background-color: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+    border-color: var(--color-text-tertiary);
   }
 
   main {
@@ -623,32 +641,6 @@
     font-size: 0.75rem;
     font-weight: normal;
     color: var(--color-text-tertiary);
-  }
-
-  .edit-name-btn {
-    background: none;
-    border: none;
-    padding: 0;
-    margin-top: var(--space-xs);
-    font-size: 0.75rem;
-    color: var(--color-primary);
-    cursor: pointer;
-    text-decoration: underline;
-  }
-
-  .edit-name-btn:hover {
-    color: var(--color-primary-hover);
-  }
-
-  .edit-display-name-form {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-  }
-
-  .edit-actions {
-    display: flex;
-    gap: var(--space-xs);
   }
 
   @media (max-width: 768px) {

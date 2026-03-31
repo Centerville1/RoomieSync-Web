@@ -289,6 +289,58 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   // Sort by date
   balanceEvents.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
+  // Query: Full reverse expense data for cancel-out in PayExpensesModal
+  // Expenses created by current user where other members have unpaid splits
+  const reverseExpenseRows = await db
+    .select({
+      expense: expenses,
+      splitId: expenseSplits.id,
+      splitUserId: expenseSplits.userId,
+      splitHasPaid: expenseSplits.hasPaid,
+      splitPaidAt: expenseSplits.paidAt
+    })
+    .from(expenses)
+    .innerJoin(expenseSplits, eq(expenses.id, expenseSplits.expenseId))
+    .where(and(eq(expenses.householdId, householdId), eq(expenses.creatorId, currentUserId)));
+
+  // Filter to only expenses that have at least one unpaid split from a non-creator
+  const reverseExpenseMap = new Map<
+    string,
+    {
+      id: string;
+      description: string;
+      amount: number;
+      isOptional: boolean;
+      creatorId: string;
+      createdAt: Date;
+      splits: { userId: string; hasPaid: boolean; paidAt: Date | null }[];
+    }
+  >();
+
+  for (const row of reverseExpenseRows) {
+    if (!reverseExpenseMap.has(row.expense.id)) {
+      reverseExpenseMap.set(row.expense.id, {
+        id: row.expense.id,
+        description: row.expense.description,
+        amount: row.expense.amount,
+        isOptional: row.expense.isOptional,
+        creatorId: row.expense.creatorId,
+        createdAt: row.expense.createdAt,
+        splits: []
+      });
+    }
+    reverseExpenseMap.get(row.expense.id)!.splits.push({
+      userId: row.splitUserId,
+      hasPaid: row.splitHasPaid,
+      paidAt: row.splitPaidAt
+    });
+  }
+
+  // Only include expenses where at least one non-creator split is unpaid
+  const reverseExpenses = Array.from(reverseExpenseMap.values()).filter((e) =>
+    e.splits.some((s) => s.userId !== currentUserId && !s.hasPaid)
+  );
+
   // Return the raw events so the client can filter by optional status
   const balanceHistory = balanceEvents.map((event) => ({
     date: event.date,
@@ -330,7 +382,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     memberBalances,
     balanceHistory,
     nudgesSent,
-    nudgesReceived
+    nudgesReceived,
+    reverseExpenses
   };
 };
 
@@ -720,18 +773,61 @@ export const actions: Actions = {
 
     const formData = await request.formData();
     const expenseIds = formData.getAll('expenseIds') as string[];
+    const cancelOutExpenseIds = formData.getAll('cancelOutExpenseIds') as string[];
+    const cancelOutForUserIds = formData.getAll('cancelOutForUserId') as string[];
 
     if (!expenseIds || expenseIds.length === 0) {
       return fail(400, { error: 'No expenses selected' });
     }
 
-    // Update expense splits for current user
+    const now = new Date();
+
+    // Mark user's selected expenses as paid
     await db
       .update(expenseSplits)
-      .set({ hasPaid: true, paidAt: new Date() })
+      .set({ hasPaid: true, paidAt: now })
       .where(
         and(inArray(expenseSplits.expenseId, expenseIds), eq(expenseSplits.userId, currentUserId))
       );
+
+    // Handle cancel-out: mark reverse expenses as paid by the respective users
+    if (
+      cancelOutExpenseIds.length > 0 &&
+      cancelOutExpenseIds.length === cancelOutForUserIds.length
+    ) {
+      // Group by userId for efficiency
+      const cancelOutByUser = new Map<string, string[]>();
+      for (let i = 0; i < cancelOutExpenseIds.length; i++) {
+        const userId = cancelOutForUserIds[i];
+        const expId = cancelOutExpenseIds[i];
+        if (!cancelOutByUser.has(userId)) cancelOutByUser.set(userId, []);
+        cancelOutByUser.get(userId)!.push(expId);
+      }
+
+      for (const [userId, expIds] of cancelOutByUser) {
+        // Validate: these expenses must be created by the current user
+        const validExpenses = await db
+          .select({ id: expenses.id })
+          .from(expenses)
+          .where(
+            and(
+              inArray(expenses.id, expIds),
+              eq(expenses.householdId, householdId),
+              eq(expenses.creatorId, currentUserId)
+            )
+          );
+
+        const validIds = validExpenses.map((e) => e.id);
+        if (validIds.length > 0) {
+          await db
+            .update(expenseSplits)
+            .set({ hasPaid: true, paidAt: now })
+            .where(
+              and(inArray(expenseSplits.expenseId, validIds), eq(expenseSplits.userId, userId))
+            );
+        }
+      }
+    }
 
     return { success: true };
   },
@@ -1212,5 +1308,160 @@ export const actions: Actions = {
     });
 
     return { success: true, nudgeSent: true };
+  },
+
+  kickMember: async ({ request, locals, params }) => {
+    if (!locals.user) {
+      throw redirect(302, '/login');
+    }
+
+    const householdId = params.id;
+    const currentUserId = locals.user.id;
+
+    // Verify user is admin
+    const membership = await db
+      .select()
+      .from(householdMembers)
+      .where(
+        and(
+          eq(householdMembers.householdId, householdId),
+          eq(householdMembers.userId, currentUserId),
+          eq(householdMembers.role, 'admin')
+        )
+      )
+      .limit(1);
+
+    if (membership.length === 0) {
+      throw error(403, 'Only admins can remove members');
+    }
+
+    const formData = await request.formData();
+    const memberId = formData.get('memberId') as string;
+
+    if (!memberId) {
+      return fail(400, { error: 'Member ID is required' });
+    }
+
+    if (memberId === currentUserId) {
+      return fail(400, { error: 'You cannot remove yourself' });
+    }
+
+    // Verify target member exists in this household
+    const targetMember = await db
+      .select()
+      .from(householdMembers)
+      .where(
+        and(eq(householdMembers.householdId, householdId), eq(householdMembers.userId, memberId))
+      )
+      .limit(1);
+
+    if (targetMember.length === 0) {
+      return fail(400, { error: 'Member not found in this household' });
+    }
+
+    // Delete their expense splits in this household
+    const memberExpenseSplits = await db
+      .select({ expenseId: expenseSplits.expenseId })
+      .from(expenseSplits)
+      .innerJoin(expenses, eq(expenseSplits.expenseId, expenses.id))
+      .where(and(eq(expenses.householdId, householdId), eq(expenseSplits.userId, memberId)));
+
+    if (memberExpenseSplits.length > 0) {
+      const splitExpenseIds = memberExpenseSplits.map((s) => s.expenseId);
+      await db
+        .delete(expenseSplits)
+        .where(
+          and(inArray(expenseSplits.expenseId, splitExpenseIds), eq(expenseSplits.userId, memberId))
+        );
+    }
+
+    // Delete expenses they created in this household (cascades to splits)
+    await db
+      .delete(expenses)
+      .where(and(eq(expenses.householdId, householdId), eq(expenses.creatorId, memberId)));
+
+    // Remove from household
+    await db
+      .delete(householdMembers)
+      .where(
+        and(eq(householdMembers.householdId, householdId), eq(householdMembers.userId, memberId))
+      );
+
+    return { success: true };
+  },
+
+  renameHousehold: async ({ request, locals, params }) => {
+    if (!locals.user) {
+      throw redirect(302, '/login');
+    }
+
+    const householdId = params.id;
+    const currentUserId = locals.user.id;
+
+    // Verify user is admin
+    const membership = await db
+      .select()
+      .from(householdMembers)
+      .where(
+        and(
+          eq(householdMembers.householdId, householdId),
+          eq(householdMembers.userId, currentUserId),
+          eq(householdMembers.role, 'admin')
+        )
+      )
+      .limit(1);
+
+    if (membership.length === 0) {
+      throw error(403, 'Only admins can rename the household');
+    }
+
+    const formData = await request.formData();
+    const name = (formData.get('name') as string)?.trim();
+
+    if (!name || name.length === 0) {
+      return fail(400, { error: 'Name is required' });
+    }
+
+    if (name.length > 100) {
+      return fail(400, { error: 'Name must be 100 characters or less' });
+    }
+
+    await db
+      .update(households)
+      .set({ name, updatedAt: new Date() })
+      .where(eq(households.id, householdId));
+
+    return { success: true };
+  },
+
+  deleteHousehold: async ({ locals, params }) => {
+    if (!locals.user) {
+      throw redirect(302, '/login');
+    }
+
+    const householdId = params.id;
+    const currentUserId = locals.user.id;
+
+    // Verify user is admin
+    const membership = await db
+      .select()
+      .from(householdMembers)
+      .where(
+        and(
+          eq(householdMembers.householdId, householdId),
+          eq(householdMembers.userId, currentUserId),
+          eq(householdMembers.role, 'admin')
+        )
+      )
+      .limit(1);
+
+    if (membership.length === 0) {
+      throw error(403, 'Only admins can delete the household');
+    }
+
+    // Delete household (cascades to members, expenses, splits, invites via foreign keys)
+    await db.delete(households).where(eq(households.id, householdId));
+
+    throw redirect(302, '/');
   }
 };

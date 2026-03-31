@@ -329,7 +329,6 @@
     onSelectionChange(newSelection);
   }
 
-
   async function handleScroll() {
     if (!scrollContainer || !onLoadMore || !hasMore || isLoadingMore) return;
 
@@ -400,7 +399,10 @@
           {@const nudgeStatus = !isCurrentUser ? canNudge(member.id) : null}
           {@const nudgeBadge = !isCurrentUser ? getNudgeBadgeText(member.id) : null}
           <div class="member-header" class:current-user={isCurrentUser}>
-            <span class="member-name">{getMemberDisplayName(member)}{#if isCurrentUser} (You){/if}</span>
+            <span class="member-name"
+              >{getMemberDisplayName(member)}{#if isCurrentUser}
+                (You){/if}</span
+            >
             {#if !isCurrentUser && balance}
               {@const hasOwesYou = balance.owesYou > 0}
               {@const hasYouOwe = balance.youOwe > 0}
@@ -414,7 +416,9 @@
                 <span class="you-owe">You owe {formatCurrency(balance.youOwe)}</span>
               {/if}
               {#if balance.youOweOptional > 0}
-                <span class="opt-amount you-owe-opt">{formatCurrency(balance.youOweOptional)} opt</span>
+                <span class="opt-amount you-owe-opt"
+                  >{formatCurrency(balance.youOweOptional)} opt</span
+                >
               {/if}
               {#if !hasOwesYou && !hasYouOwe && balance.owesYouOptional === 0 && balance.youOweOptional === 0}
                 <span class="settled">✓</span>
@@ -424,7 +428,8 @@
                   <button
                     type="button"
                     class="nudge-btn"
-                    title={nudgeBadge ?? (nudgeStatus?.canNudge ? 'Send a reminder' : nudgeStatus?.reason)}
+                    title={nudgeBadge ??
+                      (nudgeStatus?.canNudge ? 'Send a reminder' : nudgeStatus?.reason)}
                     disabled={!nudgeStatus?.canNudge}
                     onclick={(e) => {
                       e.stopPropagation();
@@ -590,7 +595,9 @@
                     >
                       <span class="status-icon paid">✓</span>
                       <span class="paid-info you-paid">
-                        <span class="text-label">You paid </span>{formatCurrency(getUserShare(expense))}
+                        <span class="text-label">You paid </span>{formatCurrency(
+                          getUserShare(expense)
+                        )}
                         {#if paidAt}
                           <span class="paid-date">{formatShortDateTime(paidAt)}</span>
                         {/if}
@@ -601,12 +608,16 @@
                       <span class="status-icon paid" title="Paid">✓</span>
                       {#if isMyExpense && paidAt}
                         <span class="paid-info">
-                          <span class="text-label">Paid you </span>{formatCurrency(getUserShare(expense))}
+                          <span class="text-label">Paid you </span>{formatCurrency(
+                            getUserShare(expense)
+                          )}
                           <span class="paid-date">{formatShortDateTime(paidAt)}</span>
                         </span>
                       {:else if isMyColumn && paidAt}
                         <span class="paid-info you-paid">
-                          <span class="text-label">You paid </span>{formatCurrency(getUserShare(expense))}
+                          <span class="text-label">You paid </span>{formatCurrency(
+                            getUserShare(expense)
+                          )}
                           <span class="paid-date">{formatShortDateTime(paidAt)}</span>
                         </span>
                       {/if}
@@ -631,9 +642,17 @@
                         >{isSelected && isMyColumn ? '☑' : '☐'}</span
                       >
                       {#if isMyExpense}
-                        <span class="owes-info"><span class="text-label">Owes you </span>{formatCurrency(getUserShare(expense))}</span>
+                        <span class="owes-info"
+                          ><span class="text-label">Owes you </span>{formatCurrency(
+                            getUserShare(expense)
+                          )}</span
+                        >
                       {:else if isMyColumn}
-                        <span class="you-owe-info"><span class="text-label">You owe </span>{formatCurrency(getUserShare(expense))}</span>
+                        <span class="you-owe-info"
+                          ><span class="text-label">You owe </span>{formatCurrency(
+                            getUserShare(expense)
+                          )}</span
+                        >
                       {/if}
                     </div>
                   {/if}
