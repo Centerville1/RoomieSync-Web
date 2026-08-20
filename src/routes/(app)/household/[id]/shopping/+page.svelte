@@ -1,22 +1,21 @@
 <script lang="ts">
   import type { PageData, ActionData } from './$types';
   import Button from '$lib/components/Button.svelte';
-  import AddItemForm from './AddItemForm.svelte';
+  import ItemFormModal from './ItemFormModal.svelte';
   import CategoryManagerModal from './CategoryManagerModal.svelte';
   import { enhance } from '$app/forms';
-  import { invalidateAll } from '$app/navigation';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
 
-  let scopeFilter = $state<'shared' | 'personal' | null>(null);
-  let categoryFilter = $state<string | null>(null);
-  let showPurchased = $state(false);
-  let selectedIds = $state<Set<string>>(new Set());
-  let showCategoryModal = $state(false);
+  type Item = PageData['items'][number];
 
-  // Optimistic purchased state: a Turso round-trip over mobile data is slow
-  // enough that an unresponsive checkbox reads as broken.
-  let pendingToggles = $state<Map<string, boolean>>(new Map());
+  let scopeFilter = $state<'all' | 'shared' | 'personal'>('all');
+  let categoryFilter = $state<string | null>(null);
+  let selectedIds = $state<Set<string>>(new Set());
+  let showPurchasedSection = $state(false);
+  let showItemModal = $state(false);
+  let editingItem = $state<Item | null>(null);
+  let showCategoryModal = $state(false);
 
   const memberName = $derived.by(() => {
     const map = new Map<string, string>();
@@ -24,43 +23,47 @@
     return map;
   });
 
-  function isPurchased(item: { id: string; purchasedAt: Date | null }) {
-    const pending = pendingToggles.get(item.id);
-    return pending !== undefined ? pending : item.purchasedAt !== null;
+  const categoryName = $derived.by(() => {
+    const map = new Map<string, string>();
+    for (const c of data.categories) map.set(c.id, c.name);
+    return map;
+  });
+
+  function matchesFilters(item: Item) {
+    if (scopeFilter !== 'all' && item.visibility !== scopeFilter) return false;
+    if (categoryFilter !== null && item.categoryId !== categoryFilter) return false;
+    return true;
   }
 
-  const visibleItems = $derived.by(() =>
-    data.items.filter((item) => {
-      if (!showPurchased && isPurchased(item)) return false;
-      if (scopeFilter && item.visibility !== scopeFilter) return false;
-      if (categoryFilter !== null && item.categoryId !== categoryFilter) return false;
-      return true;
-    })
+  const openItems = $derived(data.items.filter((i) => i.purchasedAt === null && matchesFilters(i)));
+  const purchasedItems = $derived(
+    data.items.filter((i) => i.purchasedAt !== null && matchesFilters(i))
   );
 
-  // Group into the household's categories, with uncategorised last
+  // Group open items by category, uncategorised last
   const grouped = $derived.by(() => {
-    const groups: Array<{ id: string | null; name: string; items: typeof data.items }> = [];
+    const groups: Array<{ id: string | null; name: string; items: Item[] }> = [];
     for (const c of data.categories) {
-      const items = visibleItems.filter((i) => i.categoryId === c.id);
+      const items = openItems.filter((i) => i.categoryId === c.id);
       if (items.length > 0) groups.push({ id: c.id, name: c.name, items });
     }
-    const loose = visibleItems.filter(
+    const loose = openItems.filter(
       (i) => i.categoryId === null || !data.categories.some((c) => c.id === i.categoryId)
     );
     if (loose.length > 0) groups.push({ id: null, name: 'Uncategorised', items: loose });
     return groups;
   });
 
-  const openCount = $derived(data.items.filter((i) => !isPurchased(i)).length);
+  const scopeCounts = $derived.by(() => ({
+    all: data.items.filter((i) => i.purchasedAt === null).length,
+    shared: data.items.filter((i) => i.purchasedAt === null && i.visibility === 'shared').length,
+    personal: data.items.filter((i) => i.purchasedAt === null && i.visibility === 'personal').length
+  }));
 
-  function toggleScope(scope: 'shared' | 'personal') {
-    scopeFilter = scopeFilter === scope ? null : scope;
-  }
-
-  function toggleCategory(id: string | null) {
-    categoryFilter = categoryFilter === id ? null : id;
-  }
+  const selectedItems = $derived(data.items.filter((i) => selectedIds.has(i.id)));
+  const allSelectedArePurchased = $derived(
+    selectedItems.length > 0 && selectedItems.every((i) => i.purchasedAt !== null)
+  );
 
   function toggleSelected(id: string) {
     const next = new Set(selectedIds);
@@ -69,27 +72,19 @@
     selectedIds = next;
   }
 
-  // A single hidden form drives every row's toggle. Using a real form keeps
-  // SvelteKit's action handling rather than hand-rolling the protocol.
-  let toggleForm = $state<HTMLFormElement | null>(null);
-  let toggleItemId = $state('');
-  let togglePurchasedValue = $state('true');
-
-  function togglePurchased(item: { id: string; purchasedAt: Date | null }) {
-    const target = !isPurchased(item);
-    pendingToggles = new Map(pendingToggles).set(item.id, target);
-    toggleItemId = item.id;
-    togglePurchasedValue = String(target);
-    toggleForm?.requestSubmit();
+  function openAdd() {
+    editingItem = null;
+    showItemModal = true;
   }
 
-  function clearPending(id: string) {
-    const next = new Map(pendingToggles);
-    next.delete(id);
-    pendingToggles = next;
+  function openEdit(item: Item) {
+    editingItem = item;
+    showItemModal = true;
   }
 
-  const selectedItems = $derived(data.items.filter((i) => selectedIds.has(i.id)));
+  function clearSelection() {
+    selectedIds = new Set();
+  }
 
   function formatDate(d: Date | null) {
     if (!d) return '';
@@ -98,169 +93,221 @@
 </script>
 
 <main class="container">
-  <div class="list-header">
+  <div class="page-header">
     <div>
       <h2>Shopping List</h2>
       <p class="helper">
-        {openCount}
-        {openCount === 1 ? 'item' : 'items'} to buy
+        {scopeCounts.all}
+        {scopeCounts.all === 1 ? 'item' : 'items'} to buy
       </p>
     </div>
-    <Button variant="outline" size="sm" on:click={() => (showCategoryModal = true)}>
-      Categories
+    <Button variant="ghost" size="sm" on:click={() => (showCategoryModal = true)}>
+      Manage categories
     </Button>
   </div>
-
-  <AddItemForm categories={data.categories} suggestions={data.suggestions} />
 
   {#if form?.error}
     <p class="error-message">{form.error}</p>
   {/if}
 
-  <!-- Filters: scope and category use the same toggle model. No "All" button —
-       the unfiltered state is simply no chip active. -->
-  <div class="filters">
-    <div class="filter-row">
-      <span class="filter-label">Scope</span>
-      <div class="chips">
-        <button
-          type="button"
-          class="chip"
-          class:active={scopeFilter === 'shared'}
-          onclick={() => toggleScope('shared')}
-        >
-          Shared
-        </button>
-        <button
-          type="button"
-          class="chip"
-          class:active={scopeFilter === 'personal'}
-          onclick={() => toggleScope('personal')}
-        >
-          Mine
-        </button>
-      </div>
+  <!-- Filter: one labelled control, always showing which view is active -->
+  <div class="filter-bar">
+    <span class="filter-caption">Showing</span>
+    <div class="segmented" role="group" aria-label="Filter by who can see items">
+      <button
+        type="button"
+        class="seg"
+        class:active={scopeFilter === 'all'}
+        onclick={() => (scopeFilter = 'all')}
+      >
+        Everything <span class="seg-count">{scopeCounts.all}</span>
+      </button>
+      <button
+        type="button"
+        class="seg"
+        class:active={scopeFilter === 'shared'}
+        onclick={() => (scopeFilter = 'shared')}
+      >
+        Shared <span class="seg-count">{scopeCounts.shared}</span>
+      </button>
+      <button
+        type="button"
+        class="seg"
+        class:active={scopeFilter === 'personal'}
+        onclick={() => (scopeFilter = 'personal')}
+      >
+        Just mine <span class="seg-count">{scopeCounts.personal}</span>
+      </button>
     </div>
-
-    {#if data.categories.length > 0}
-      <div class="filter-row">
-        <span class="filter-label">Category</span>
-        <div class="chips">
-          {#each data.categories as c (c.id)}
-            <button
-              type="button"
-              class="chip"
-              class:active={categoryFilter === c.id}
-              onclick={() => toggleCategory(c.id)}
-            >
-              {c.name}
-            </button>
-          {/each}
-        </div>
-      </div>
-    {/if}
-
-    <label class="show-purchased">
-      <input type="checkbox" bind:checked={showPurchased} />
-      Show purchased
-    </label>
   </div>
 
-  {#if grouped.length === 0}
-    <div class="empty">
-      {#if data.items.length === 0}
-        <p>Nothing on the list yet. Add the first item above.</p>
-      {:else}
-        <p>No items match these filters.</p>
-      {/if}
+  {#if data.categories.length > 0}
+    <div class="chips" role="group" aria-label="Filter by category">
+      {#each data.categories as c (c.id)}
+        <button
+          type="button"
+          class="chip"
+          class:active={categoryFilter === c.id}
+          onclick={() => (categoryFilter = categoryFilter === c.id ? null : c.id)}
+        >
+          {c.name}
+        </button>
+      {/each}
     </div>
-  {:else}
-    {#each grouped as group (group.id ?? 'none')}
-      <section class="group">
-        <h3 class="group-title">{group.name}</h3>
-        <ul class="items">
+  {/if}
+
+  <!-- The list, laid out as a table like the expense grid -->
+  <div class="table-wrapper">
+    <div class="table">
+      <!-- Add row, echoing the expense grid's Split the Cost row -->
+      <button type="button" class="add-row" onclick={openAdd}>
+        <span class="add-plus">+</span>
+        <span class="add-text">
+          <span class="add-title">Add an item</span>
+          <span class="add-sub">Set the category, quantity and notes</span>
+        </span>
+      </button>
+
+      {#if grouped.length === 0}
+        <div class="empty">
+          {#if scopeCounts.all === 0}
+            <p>Nothing left to buy.</p>
+          {:else}
+            <p>No items match this filter.</p>
+          {/if}
+        </div>
+      {:else}
+        <div class="head-row" aria-hidden="true">
+          <span class="col-check"></span>
+          <span class="col-name">Item</span>
+          <span class="col-qty">Qty</span>
+          <span class="col-added">Added by</span>
+        </div>
+
+        {#each grouped as group (group.id ?? 'none')}
+          <div class="group-head">{group.name}</div>
           {#each group.items as item (item.id)}
-            {@const purchased = isPurchased(item)}
-            <li class="item" class:purchased class:selected={selectedIds.has(item.id)}>
-              <label class="check">
+            <div class="row" class:selected={selectedIds.has(item.id)}>
+              <label class="col-check">
                 <input
                   type="checkbox"
-                  checked={purchased}
-                  onchange={() => togglePurchased(item)}
-                  aria-label="Mark {item.name} purchased"
+                  checked={selectedIds.has(item.id)}
+                  onchange={() => toggleSelected(item.id)}
+                  aria-label="Select {item.name}"
                 />
               </label>
-
-              <button type="button" class="body" onclick={() => toggleSelected(item.id)}>
-                <span class="line-1">
-                  <span class="name">{item.name}</span>
-                  {#if item.quantity}
-                    <span class="qty">{item.quantity}</span>
-                  {/if}
-                </span>
-                <span class="line-2">
-                  {#if item.visibility === 'personal'}
-                    <span class="badge-personal">Just me</span>
-                  {:else}
-                    <span class="meta">Shared</span>
-                    <span class="meta">· {memberName.get(item.addedBy) ?? 'Someone'}</span>
-                  {/if}
+              <button type="button" class="row-body" onclick={() => openEdit(item)}>
+                <span class="col-name">
+                  <span class="name-line">
+                    <span class="name">{item.name}</span>
+                    {#if item.visibility === 'personal'}
+                      <span class="pill-mine">Just me</span>
+                    {/if}
+                  </span>
                   {#if item.notes}
-                    <span class="meta notes">· {item.notes}</span>
-                  {/if}
-                  {#if purchased && item.purchasedBy}
-                    <span class="meta">
-                      · got by {memberName.get(item.purchasedBy) ?? 'someone'}
-                      {formatDate(item.purchasedAt)}
-                    </span>
+                    <span class="notes">{item.notes}</span>
                   {/if}
                 </span>
+                <span class="col-qty">{item.quantity ?? '1'}</span>
+                <span class="col-added">{memberName.get(item.addedBy) ?? '—'}</span>
               </button>
-            </li>
+            </div>
           {/each}
-        </ul>
-      </section>
-    {/each}
+        {/each}
+      {/if}
+    </div>
+  </div>
+
+  <!-- Purchased items: collapsed by default, replacing the old checkbox -->
+  {#if purchasedItems.length > 0}
+    <div class="purchased-section">
+      <button
+        type="button"
+        class="purchased-toggle"
+        onclick={() => (showPurchasedSection = !showPurchasedSection)}
+        aria-expanded={showPurchasedSection}
+      >
+        <span class="caret" class:open={showPurchasedSection}>▸</span>
+        Previously purchased
+        <span class="purchased-count">{purchasedItems.length}</span>
+      </button>
+
+      {#if showPurchasedSection}
+        <div class="table-wrapper purchased-table">
+          <div class="table">
+            {#each purchasedItems as item (item.id)}
+              <div class="row purchased" class:selected={selectedIds.has(item.id)}>
+                <label class="col-check">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(item.id)}
+                    onchange={() => toggleSelected(item.id)}
+                    aria-label="Select {item.name}"
+                  />
+                </label>
+                <button type="button" class="row-body" onclick={() => openEdit(item)}>
+                  <span class="col-name">
+                    <span class="name-line">
+                      <span class="name">{item.name}</span>
+                      {#if item.visibility === 'personal'}
+                        <span class="pill-mine">Just me</span>
+                      {/if}
+                    </span>
+                    <span class="notes">
+                      {memberName.get(item.purchasedBy ?? '') ?? 'Someone'} · {formatDate(
+                        item.purchasedAt
+                      )}
+                      {#if item.categoryId && categoryName.get(item.categoryId)}
+                        · {categoryName.get(item.categoryId)}
+                      {/if}
+                    </span>
+                  </span>
+                  <span class="col-qty">{item.quantity ?? '1'}</span>
+                  <span class="col-added">{memberName.get(item.addedBy) ?? '—'}</span>
+                </button>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+    </div>
   {/if}
 </main>
 
-<!-- Drives the per-row purchased toggle -->
-<form
-  bind:this={toggleForm}
-  method="POST"
-  action="?/togglePurchased"
-  class="hidden-form"
-  use:enhance={() => {
-    const id = toggleItemId;
-    return async ({ result, update }) => {
-      await update({ reset: false });
-      // On failure the optimistic flip is dropped so the row shows the truth
-      clearPending(id);
-      if (result.type === 'error' || result.type === 'failure') {
-        await invalidateAll();
-      }
-    };
-  }}
->
-  <input type="hidden" name="itemId" value={toggleItemId} />
-  <input type="hidden" name="purchased" value={togglePurchasedValue} />
-</form>
-
-<!-- Bulk action bar: one selection model drives both remove and split -->
+<!-- Bulk bar: selection drives mark-purchased and remove -->
 {#if selectedIds.size > 0}
   <div class="bulk-bar" role="region" aria-label="Selected items">
-    <span class="bulk-count">{selectedIds.size} selected</span>
+    <div class="bulk-left">
+      <span class="bulk-count">{selectedIds.size} selected</span>
+      <button type="button" class="bulk-clear" onclick={clearSelection}>Clear</button>
+    </div>
     <div class="bulk-actions">
-      <button type="button" class="bulk-clear" onclick={() => (selectedIds = new Set())}>
-        Clear
-      </button>
+      <form
+        method="POST"
+        action="?/setPurchased"
+        use:enhance={() => {
+          return async ({ update }) => {
+            await update({ reset: false });
+            clearSelection();
+          };
+        }}
+      >
+        {#each selectedItems as item (item.id)}
+          <input type="hidden" name="itemIds" value={item.id} />
+        {/each}
+        <input type="hidden" name="purchased" value={allSelectedArePurchased ? 'false' : 'true'} />
+        <Button type="submit" variant="primary" size="sm">
+          {allSelectedArePurchased ? 'Move back to list' : 'Mark purchased'}
+        </Button>
+      </form>
+
       <form
         method="POST"
         action="?/removeItems"
         use:enhance={() => {
           return async ({ update }) => {
             await update({ reset: false });
-            selectedIds = new Set();
+            clearSelection();
           };
         }}
       >
@@ -273,6 +320,13 @@
   </div>
 {/if}
 
+<ItemFormModal
+  bind:open={showItemModal}
+  categories={data.categories}
+  suggestions={data.suggestions}
+  item={editingItem}
+/>
+
 <CategoryManagerModal bind:open={showCategoryModal} categories={data.categories} />
 
 <style>
@@ -280,11 +334,7 @@
     padding: var(--space-xl) var(--space-md) 6rem;
   }
 
-  .hidden-form {
-    display: none;
-  }
-
-  .list-header {
+  .page-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
@@ -292,7 +342,7 @@
     margin-bottom: var(--space-md);
   }
 
-  .list-header h2 {
+  .page-header h2 {
     margin: 0;
     color: var(--color-text-primary);
   }
@@ -312,24 +362,16 @@
     font-size: 0.9rem;
   }
 
-  /* Filters */
-  .filters {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-    margin-bottom: var(--space-lg);
-  }
-
-  .filter-row {
+  /* Filter bar */
+  .filter-bar {
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-    min-width: 0;
+    margin-bottom: var(--space-sm);
   }
 
-  .filter-label {
+  .filter-caption {
     flex-shrink: 0;
-    width: 4.5rem;
     font-size: 0.78rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -337,11 +379,60 @@
     color: var(--color-text-tertiary);
   }
 
+  .segmented {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    padding: 3px;
+    gap: 2px;
+    background-color: var(--color-bg-tertiary);
+    border-radius: var(--radius-md);
+  }
+
+  .seg {
+    flex: 1;
+    min-width: 0;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0 var(--space-sm);
+    border: none;
+    border-radius: calc(var(--radius-md) - 2px);
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-family: inherit;
+    font-size: 0.88rem;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .seg:hover:not(.active) {
+    color: var(--color-text-primary);
+  }
+
+  .seg.active {
+    background-color: var(--color-bg-primary);
+    color: var(--color-primary);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  }
+
+  .seg-count {
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.75;
+  }
+
+  /* Category chips */
   .chips {
     display: flex;
     gap: var(--space-xs);
     overflow-x: auto;
     scrollbar-width: none;
+    margin-bottom: var(--space-md);
     padding-bottom: 2px;
   }
 
@@ -362,7 +453,6 @@
     font-weight: 600;
     white-space: nowrap;
     cursor: pointer;
-    transition: all 0.15s ease;
   }
 
   .chip:hover {
@@ -376,89 +466,139 @@
     color: #fff;
   }
 
-  .show-purchased {
+  /* Table — mirrors the expense grid's framing */
+  .table-wrapper {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background-color: var(--color-bg-primary);
+    overflow: hidden;
+  }
+
+  .table {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Add row */
+  .add-row {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
-    font-size: 0.9rem;
-    color: var(--color-text-secondary);
+    gap: var(--space-md);
+    width: 100%;
+    padding: var(--space-md);
+    border: none;
+    border-bottom: 1px solid var(--color-border);
+    background-color: var(--color-bg-secondary);
+    color: var(--color-text-primary);
+    font-family: inherit;
+    text-align: left;
     cursor: pointer;
-    min-height: 36px;
+    transition: background-color 0.15s ease;
   }
 
-  .show-purchased input {
-    width: 18px;
-    height: 18px;
-    accent-color: var(--color-primary);
+  .add-row:hover {
+    background-color: var(--color-bg-tertiary);
   }
 
-  /* Groups */
-  .group {
-    margin-bottom: var(--space-lg);
+  .add-plus {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background-color: var(--color-primary);
+    color: #fff;
+    font-size: 1.4rem;
+    font-weight: 600;
+    line-height: 1;
   }
 
-  .group-title {
-    margin: 0 0 var(--space-sm);
-    font-size: 0.78rem;
+  .add-text {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .add-title {
+    font-weight: 700;
+    font-size: 1rem;
+  }
+
+  .add-sub {
+    font-size: 0.82rem;
+    color: var(--color-text-secondary);
+  }
+
+  /* Rows */
+  .head-row {
+    display: grid;
+    grid-template-columns: 48px 1fr 4rem 7rem;
+    align-items: center;
+    padding-right: var(--space-md);
+    background-color: var(--color-bg-tertiary);
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--color-text-tertiary);
+  }
+
+  .head-row .col-name,
+  .head-row .col-qty,
+  .head-row .col-added {
+    padding: var(--space-xs) 0;
+  }
+
+  .group-head {
+    padding: var(--space-sm) var(--space-md);
+    background-color: var(--color-bg-secondary);
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.7rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--color-text-tertiary);
   }
 
-  .items {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .item {
-    display: flex;
+  .row {
+    display: grid;
+    grid-template-columns: 48px 1fr;
     align-items: stretch;
-    gap: var(--space-xs);
-    background-color: var(--color-bg-primary);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    overflow: hidden;
+    border-bottom: 1px solid var(--color-border);
   }
 
-  .item.selected {
-    border-color: var(--color-primary);
-    box-shadow: inset 0 0 0 1px var(--color-primary);
+  .row:last-child {
+    border-bottom: none;
   }
 
-  .item.purchased .name {
-    text-decoration: line-through;
-    color: var(--color-text-tertiary);
+  .row.selected {
+    background-color: color-mix(in srgb, var(--color-primary) 14%, transparent);
   }
 
-  .check {
+  .col-check {
     display: flex;
     align-items: center;
-    padding: 0 var(--space-xs) 0 var(--space-md);
+    justify-content: center;
     cursor: pointer;
   }
 
-  .check input {
-    width: 22px;
-    height: 22px;
+  .col-check input {
+    width: 20px;
+    height: 20px;
     accent-color: var(--color-primary);
     cursor: pointer;
   }
 
-  /* The whole row body is the selection target, not a small checkbox */
-  .body {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    align-items: flex-start;
-    min-height: 52px;
-    padding: var(--space-sm) var(--space-md) var(--space-sm) var(--space-xs);
+  /* Clicking the row body opens the edit form */
+  .row-body {
+    display: grid;
+    grid-template-columns: 1fr 4rem 7rem;
+    align-items: center;
+    gap: var(--space-sm);
+    width: 100%;
+    min-height: 56px;
+    padding: var(--space-sm) var(--space-md) var(--space-sm) 0;
     border: none;
     background: none;
     font-family: inherit;
@@ -466,12 +606,22 @@
     cursor: pointer;
   }
 
-  .line-1 {
+  .row-body:hover {
+    background-color: var(--color-bg-secondary);
+  }
+
+  .col-name {
     display: flex;
-    align-items: baseline;
-    gap: var(--space-sm);
+    flex-direction: column;
+    gap: 2px;
     min-width: 0;
-    width: 100%;
+  }
+
+  .name-line {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    min-width: 0;
   }
 
   .name {
@@ -483,57 +633,103 @@
     white-space: nowrap;
   }
 
-  .qty {
-    flex-shrink: 0;
-    font-size: 0.85rem;
-    color: var(--color-text-secondary);
-    font-variant-numeric: tabular-nums;
-  }
-
-  /* Single truncated meta line: scope, adder, notes */
-  .line-2 {
-    display: flex;
-    gap: 0.35rem;
-    align-items: center;
-    width: 100%;
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    font-size: 0.8rem;
-  }
-
-  .meta {
-    color: var(--color-text-tertiary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .notes {
-    font-style: italic;
-  }
-
-  /* Never truncates: it is the only signal the item is private */
-  .badge-personal {
+  .pill-mine {
     flex-shrink: 0;
     padding: 1px 0.4rem;
     border-radius: 999px;
     background-color: var(--color-secondary);
     color: #fff;
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .notes {
+    font-size: 0.8rem;
+    color: var(--color-text-tertiary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .col-qty {
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-secondary);
+    font-size: 0.92rem;
+  }
+
+  .col-added {
+    color: var(--color-text-tertiary);
+    font-size: 0.85rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .row.purchased .name {
+    text-decoration: line-through;
+    color: var(--color-text-tertiary);
   }
 
   .empty {
     padding: var(--space-xl);
     text-align: center;
     color: var(--color-text-secondary);
-    background-color: var(--color-bg-primary);
-    border: 1px dashed var(--color-border);
-    border-radius: var(--radius-lg);
   }
 
   .empty p {
     margin: 0;
+  }
+
+  /* Purchased section */
+  .purchased-section {
+    margin-top: var(--space-md);
+  }
+
+  .purchased-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    width: 100%;
+    min-height: 48px;
+    padding: 0 var(--space-md);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-secondary);
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .purchased-toggle:hover {
+    color: var(--color-text-primary);
+    border-color: var(--color-text-tertiary);
+  }
+
+  .caret {
+    display: inline-block;
+    transition: transform 0.15s ease;
+    font-size: 0.8rem;
+  }
+
+  .caret.open {
+    transform: rotate(90deg);
+  }
+
+  .purchased-count {
+    margin-left: auto;
+    padding: 1px 0.5rem;
+    border-radius: 999px;
+    background-color: var(--color-bg-tertiary);
+    color: var(--color-text-tertiary);
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .purchased-table {
+    margin-top: var(--space-xs);
   }
 
   /* Bulk bar */
@@ -552,12 +748,20 @@
     padding-bottom: calc(var(--space-md) + env(safe-area-inset-bottom));
     background-color: var(--color-bg-primary);
     border-top: 1px solid var(--color-border);
-    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.14);
+  }
+
+  .bulk-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    min-width: 0;
   }
 
   .bulk-count {
     font-weight: 600;
     color: var(--color-text-primary);
+    white-space: nowrap;
   }
 
   .bulk-actions {
@@ -568,17 +772,13 @@
 
   .bulk-clear {
     min-height: 44px;
-    padding: 0 var(--space-sm);
+    padding: 0 var(--space-xs);
     border: none;
     background: none;
     color: var(--color-text-secondary);
     font-family: inherit;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
     cursor: pointer;
-  }
-
-  .bulk-clear:hover {
-    color: var(--color-text-primary);
   }
 
   @media (max-width: 767px) {
@@ -586,12 +786,54 @@
       padding: var(--space-lg) var(--space-md) 6rem;
     }
 
-    .filter-label {
+    .page-header {
+      align-items: center;
+    }
+
+    .filter-caption {
       display: none;
     }
 
-    .group {
-      margin-bottom: var(--space-md);
+    .seg {
+      font-size: 0.8rem;
+      padding: 0 var(--space-xs);
+      gap: 0.25rem;
+    }
+
+    /* Added-by drops off the row; it is still shown in the edit form */
+    .head-row {
+      grid-template-columns: 44px 1fr 3.5rem;
+    }
+
+    .head-row .col-added,
+    .row-body .col-added {
+      display: none;
+    }
+
+    .row {
+      grid-template-columns: 44px 1fr;
+    }
+
+    .row-body {
+      grid-template-columns: 1fr 3.5rem;
+    }
+
+    .bulk-bar {
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--space-sm);
+    }
+
+    .bulk-left {
+      justify-content: space-between;
+    }
+
+    .bulk-actions form {
+      flex: 1;
+    }
+
+    .bulk-actions :global(.btn) {
+      width: 100%;
     }
   }
 </style>

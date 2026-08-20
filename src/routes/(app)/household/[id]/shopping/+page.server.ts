@@ -130,42 +130,49 @@ export const actions: Actions = {
     const quantity = (formData.get('quantity') as string)?.trim() || null;
     const notes = (formData.get('notes') as string)?.trim() || null;
     const categoryId = (formData.get('categoryId') as string) || null;
+    const visibility = formData.get('visibility') === 'personal' ? 'personal' : 'shared';
+    const purchased = formData.get('purchased') === 'true';
 
     if (!itemId || !name) {
       return fail(400, { error: 'Item name is required' });
     }
 
+    // Read the current row first: purchasedAt/By are only rewritten when the
+    // purchased state actually changed, so editing a note doesn't reassign who
+    // bought it or when.
+    const existing = await db
+      .select({
+        purchasedAt: shoppingItems.purchasedAt,
+        purchasedBy: shoppingItems.purchasedBy
+      })
+      .from(shoppingItems)
+      .where(and(eq(shoppingItems.id, itemId), visibleToUser(householdId, user.id)))
+      .limit(1);
+
+    if (existing.length === 0) {
+      return fail(404, { error: 'Item not found' });
+    }
+
+    const wasPurchased = existing[0].purchasedAt !== null;
+    const purchaseFields =
+      purchased === wasPurchased
+        ? {}
+        : {
+            purchasedAt: purchased ? new Date() : null,
+            purchasedBy: purchased ? user.id : null
+          };
+
     // Scope the update to items this user may see, so a guessed id cannot
     // reach a housemate's personal item.
     const result = await db
       .update(shoppingItems)
-      .set({ name, quantity, notes, categoryId, updatedAt: new Date() })
-      .where(and(eq(shoppingItems.id, itemId), visibleToUser(householdId, user.id)));
-
-    if (result.rowsAffected === 0) {
-      return fail(404, { error: 'Item not found' });
-    }
-
-    return { success: true };
-  },
-
-  togglePurchased: async ({ request, locals, params }) => {
-    const householdId = params.id;
-    const { user } = await requireMembership(locals, householdId);
-
-    const formData = await request.formData();
-    const itemId = formData.get('itemId') as string;
-    const purchased = formData.get('purchased') === 'true';
-
-    if (!itemId) {
-      return fail(400, { error: 'Item is required' });
-    }
-
-    const result = await db
-      .update(shoppingItems)
       .set({
-        purchasedAt: purchased ? new Date() : null,
-        purchasedBy: purchased ? user.id : null,
+        name,
+        quantity,
+        notes,
+        categoryId,
+        visibility,
+        ...purchaseFields,
         updatedAt: new Date()
       })
       .where(and(eq(shoppingItems.id, itemId), visibleToUser(householdId, user.id)));
@@ -177,32 +184,34 @@ export const actions: Actions = {
     return { success: true };
   },
 
-  setVisibility: async ({ request, locals, params }) => {
+  /**
+   * Mark one or more items purchased, or put them back on the list.
+   *
+   * Takes a list so the same action serves the bulk bar and the edit form.
+   */
+  setPurchased: async ({ request, locals, params }) => {
     const householdId = params.id;
     const { user } = await requireMembership(locals, householdId);
 
     const formData = await request.formData();
-    const itemId = formData.get('itemId') as string;
-    const visibility = formData.get('visibility') === 'personal' ? 'personal' : 'shared';
+    const itemIds = formData.getAll('itemIds') as string[];
+    const purchased = formData.get('purchased') === 'true';
 
-    if (!itemId) {
-      return fail(400, { error: 'Item is required' });
+    if (itemIds.length === 0) {
+      return fail(400, { error: 'No items selected' });
     }
 
-    // Only the person who added an item can change who sees it.
     const result = await db
       .update(shoppingItems)
-      .set({ visibility, updatedAt: new Date() })
-      .where(
-        and(
-          eq(shoppingItems.id, itemId),
-          eq(shoppingItems.householdId, householdId),
-          eq(shoppingItems.addedBy, user.id)
-        )
-      );
+      .set({
+        purchasedAt: purchased ? new Date() : null,
+        purchasedBy: purchased ? user.id : null,
+        updatedAt: new Date()
+      })
+      .where(and(inArray(shoppingItems.id, itemIds), visibleToUser(householdId, user.id)));
 
     if (result.rowsAffected === 0) {
-      return fail(403, { error: 'Only the person who added an item can change its visibility' });
+      return fail(404, { error: 'Items not found' });
     }
 
     return { success: true };
