@@ -3,6 +3,7 @@
   import Button from '$lib/components/Button.svelte';
   import ItemFormModal from './ItemFormModal.svelte';
   import CategoryManagerModal from './CategoryManagerModal.svelte';
+  import ConfirmPurchaseModal from './ConfirmPurchaseModal.svelte';
   import { enhance } from '$app/forms';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
@@ -18,9 +19,7 @@
   let showItemModal = $state(false);
   let editingItem = $state<Item | null>(null);
   let showCategoryModal = $state(false);
-  // Set after items are marked purchased, which surfaces the follow-up prompt
-  // offering to split the cost. Zero means no prompt.
-  let justPurchasedCount = $state(0);
+  let showConfirmPurchase = $state(false);
 
   const memberName = $derived.by(() => {
     const map = new Map<string, string>();
@@ -91,8 +90,9 @@
     selectedIds = new Set();
   }
 
-  async function goToSplit() {
-    justPurchasedCount = 0;
+  async function handlePurchaseConfirmed(split: boolean) {
+    clearSelection();
+    if (!split) return;
     // Nothing is carried over but the intent: the list holds no prices, and
     // items are never linked to the expense they became.
     await goto(`/household/${page.params.id}?split=1`);
@@ -294,31 +294,29 @@
       <button type="button" class="bulk-clear" onclick={clearSelection}>Clear</button>
     </div>
     <div class="bulk-actions">
-      <form
-        method="POST"
-        action="?/setPurchased"
-        use:enhance={() => {
-          // Only offer the split after marking things bought, never after
-          // putting them back on the list.
-          const wasMarkingPurchased = !allSelectedArePurchased;
-          const count = selectedIds.size;
-          return async ({ result, update }) => {
-            await update({ reset: false });
-            clearSelection();
-            if (wasMarkingPurchased && result.type === 'success') {
-              justPurchasedCount = count;
-            }
-          };
-        }}
-      >
-        {#each selectedItems as item (item.id)}
-          <input type="hidden" name="itemIds" value={item.id} />
-        {/each}
-        <input type="hidden" name="purchased" value={allSelectedArePurchased ? 'false' : 'true'} />
-        <Button type="submit" variant="primary" size="sm">
-          {allSelectedArePurchased ? 'Move back to list' : 'Mark purchased'}
+      {#if allSelectedArePurchased}
+        <!-- Undoing needs no confirmation; it puts things back on the list -->
+        <form
+          method="POST"
+          action="?/setPurchased"
+          use:enhance={() => {
+            return async ({ update }) => {
+              await update({ reset: false });
+              clearSelection();
+            };
+          }}
+        >
+          {#each selectedItems as item (item.id)}
+            <input type="hidden" name="itemIds" value={item.id} />
+          {/each}
+          <input type="hidden" name="purchased" value="false" />
+          <Button type="submit" variant="primary" size="sm">Move back to list</Button>
+        </form>
+      {:else}
+        <Button variant="primary" size="sm" on:click={() => (showConfirmPurchase = true)}>
+          Mark purchased
         </Button>
-      </form>
+      {/if}
 
       <form
         method="POST"
@@ -339,26 +337,6 @@
   </div>
 {/if}
 
-<!-- Follow-up after marking items purchased: splitting is an option, not a
-     second path the user has to choose between up front. -->
-{#if justPurchasedCount > 0}
-  <div class="split-prompt" role="status">
-    <div class="split-prompt-text">
-      <strong>
-        {justPurchasedCount}
-        {justPurchasedCount === 1 ? 'item' : 'items'} marked purchased
-      </strong>
-      <span>Want to split what you paid with the household?</span>
-    </div>
-    <div class="split-prompt-actions">
-      <button type="button" class="split-dismiss" onclick={() => (justPurchasedCount = 0)}>
-        Not now
-      </button>
-      <Button variant="success" size="sm" on:click={goToSplit}>Split the cost</Button>
-    </div>
-  </div>
-{/if}
-
 <ItemFormModal
   bind:open={showItemModal}
   categories={data.categories}
@@ -367,6 +345,12 @@
   purchasedByName={editingItem?.purchasedBy
     ? (memberName.get(editingItem.purchasedBy) ?? null)
     : null}
+/>
+
+<ConfirmPurchaseModal
+  bind:open={showConfirmPurchase}
+  items={selectedItems}
+  onDone={handlePurchaseConfirmed}
 />
 
 <CategoryManagerModal bind:open={showCategoryModal} categories={data.categories} />
