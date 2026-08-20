@@ -4,6 +4,8 @@
   import ItemFormModal from './ItemFormModal.svelte';
   import CategoryManagerModal from './CategoryManagerModal.svelte';
   import { enhance } from '$app/forms';
+  import { goto } from '$app/navigation';
+  import { page } from '$app/state';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
 
@@ -16,6 +18,9 @@
   let showItemModal = $state(false);
   let editingItem = $state<Item | null>(null);
   let showCategoryModal = $state(false);
+  // Set by the "split the cost" button so the shared submit handler knows to
+  // hand off after marking items purchased.
+  let splitOnSubmit = $state(false);
 
   const memberName = $derived.by(() => {
     const map = new Map<string, string>();
@@ -286,9 +291,17 @@
         method="POST"
         action="?/setPurchased"
         use:enhance={() => {
-          return async ({ update }) => {
+          const splitAfter = splitOnSubmit;
+          splitOnSubmit = false;
+          return async ({ result, update }) => {
             await update({ reset: false });
             clearSelection();
+            // Hand off to the expenses tab, which opens the split form. Nothing
+            // is carried over: the list holds no prices, and items are never
+            // linked to the expense they became.
+            if (splitAfter && result.type === 'success') {
+              await goto(`/household/${page.params.id}?split=1`);
+            }
           };
         }}
       >
@@ -296,9 +309,21 @@
           <input type="hidden" name="itemIds" value={item.id} />
         {/each}
         <input type="hidden" name="purchased" value={allSelectedArePurchased ? 'false' : 'true'} />
-        <Button type="submit" variant="primary" size="sm">
-          {allSelectedArePurchased ? 'Move back to list' : 'Mark purchased'}
-        </Button>
+        <div class="bulk-pair">
+          <Button type="submit" variant="primary" size="sm">
+            {allSelectedArePurchased ? 'Move back to list' : 'Mark purchased'}
+          </Button>
+          {#if !allSelectedArePurchased}
+            <Button
+              type="submit"
+              variant="success"
+              size="sm"
+              on:click={() => (splitOnSubmit = true)}
+            >
+              Got it — split the cost
+            </Button>
+          {/if}
+        </div>
       </form>
 
       <form
@@ -770,6 +795,12 @@
     gap: var(--space-sm);
   }
 
+  .bulk-pair {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+
   .bulk-clear {
     min-height: 44px;
     padding: 0 var(--space-xs);
@@ -845,8 +876,13 @@
       justify-content: space-between;
     }
 
-    .bulk-actions form {
-      flex: 1;
+    .bulk-actions {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .bulk-pair {
+      flex-direction: column;
     }
 
     .bulk-actions :global(.btn) {
