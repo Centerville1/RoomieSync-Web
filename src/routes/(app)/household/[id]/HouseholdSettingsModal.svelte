@@ -3,7 +3,8 @@
   import Button from '$lib/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
   import Badge from '$lib/components/Badge.svelte';
-  import { enhance } from '$app/forms';
+  import { enhance, applyAction } from '$app/forms';
+  import { invalidateAll } from '$app/navigation';
 
   type Member = {
     id: string;
@@ -85,8 +86,9 @@
           action="{actionBase}?/renameHousehold"
           use:enhance={() => {
             isSubmitting = true;
-            return async ({ update }) => {
-              await update();
+            return async ({ result }) => {
+              if (result.type !== 'redirect') await invalidateAll();
+              await applyAction(result);
               isSubmitting = false;
               handleClose();
             };
@@ -118,8 +120,9 @@
                     action="{actionBase}?/updateDisplayName"
                     class="edit-name-inline"
                     use:enhance={() => {
-                      return async ({ update }) => {
-                        await update();
+                      return async ({ result }) => {
+                        if (result.type !== 'redirect') await invalidateAll();
+                        await applyAction(result);
                         cancelEditingDisplayName();
                       };
                     }}
@@ -190,8 +193,9 @@
                       action="{actionBase}?/kickMember"
                       use:enhance={() => {
                         isSubmitting = true;
-                        return async ({ update }) => {
-                          await update();
+                        return async ({ result }) => {
+                          if (result.type !== 'redirect') await invalidateAll();
+                          await applyAction(result);
                           isSubmitting = false;
                           kickingMemberId = null;
                         };
@@ -243,8 +247,9 @@
                 action="{actionBase}?/deleteHousehold"
                 use:enhance={() => {
                   isSubmitting = true;
-                  return async ({ update }) => {
-                    await update();
+                  return async ({ result }) => {
+                    if (result.type !== 'redirect') await invalidateAll();
+                    await applyAction(result);
                     isSubmitting = false;
                   };
                 }}

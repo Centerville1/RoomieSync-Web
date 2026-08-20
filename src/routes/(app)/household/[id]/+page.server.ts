@@ -559,7 +559,15 @@ export const actions: Actions = {
     }
 
     // Delete the invite
-    await db.delete(invites).where(eq(invites.id, inviteId));
+    // Scope to this household, matching resendInvite: without it an admin of any
+    // household could cancel an invite belonging to another one.
+    const cancelled = await db
+      .delete(invites)
+      .where(and(eq(invites.id, inviteId), eq(invites.householdId, householdId)));
+
+    if (cancelled.rowsAffected === 0) {
+      return fail(404, { error: 'Invite not found' });
+    }
 
     return { success: true };
   },

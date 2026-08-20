@@ -107,14 +107,17 @@
   // The shopping tab links here with ?split=1 after someone picks up items.
   // Nothing is carried across but the intent to split — items are never linked
   // to an expense — so this just opens the form.
-  onMount(() => {
-    if (page.url.searchParams.get('split') === '1') {
-      showSplitCostModal = true;
-      // Drop the param so a refresh or back-navigation doesn't reopen it
-      const url = new URL(page.url);
-      url.searchParams.delete('split');
-      replaceState(url, page.state);
-    }
+  //
+  // An $effect rather than onMount: arriving from the shopping tab is a
+  // client-side navigation between two children of the same layout, so this
+  // component may already be mounted and onMount would never fire.
+  $effect(() => {
+    if (page.url.searchParams.get('split') !== '1') return;
+    showSplitCostModal = true;
+    // Drop the param so a refresh or back-navigation doesn't reopen it
+    const url = new URL(page.url);
+    url.searchParams.delete('split');
+    replaceState(url, page.state);
   });
 
   // Expense selection state

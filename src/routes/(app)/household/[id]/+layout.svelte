@@ -16,7 +16,10 @@
 
   // Trailing-slash tolerant, so /household/x and /household/x/ both match.
   const isExpensesTab = $derived(currentPath.replace(/\/$/, '') === basePath);
-  const isShoppingTab = $derived(currentPath.startsWith(`${basePath}/shopping`));
+  // Anchored so a future sibling like /shopping-history cannot match
+  const isShoppingTab = $derived(
+    currentPath === `${basePath}/shopping` || currentPath.startsWith(`${basePath}/shopping/`)
+  );
 </script>
 
 <div class="household-container">
@@ -66,14 +69,19 @@
 
     <!-- Tab bar -->
     <nav class="tabs container" aria-label="Household sections">
-      <a href={basePath} class="tab" class:active={isExpensesTab} aria-current={isExpensesTab}>
+      <a
+        href={basePath}
+        class="tab"
+        class:active={isExpensesTab}
+        aria-current={isExpensesTab ? 'page' : undefined}
+      >
         Expenses
       </a>
       <a
         href="{basePath}/shopping"
         class="tab"
         class:active={isShoppingTab}
-        aria-current={isShoppingTab}
+        aria-current={isShoppingTab ? 'page' : undefined}
       >
         Shopping List
         <span class="tab-count" class:empty={data.openShoppingItems === 0}>

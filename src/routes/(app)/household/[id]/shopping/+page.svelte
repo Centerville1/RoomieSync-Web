@@ -20,6 +20,8 @@
   let editingItem = $state<Item | null>(null);
   let showCategoryModal = $state(false);
   let showConfirmPurchase = $state(false);
+  // Blocks a double-tap on the fixed bottom bar from firing an action twice
+  let bulkSubmitting = $state(false);
 
   const memberName = $derived.by(() => {
     const map = new Map<string, string>();
@@ -64,7 +66,18 @@
     personal: data.items.filter((i) => i.purchasedAt === null && i.visibility === 'personal').length
   }));
 
-  const selectedItems = $derived(data.items.filter((i) => selectedIds.has(i.id)));
+  // Only rows currently on screen. Selecting items then changing a filter must
+  // not leave Remove or Mark purchased acting on rows the user can no longer see.
+  const visibleIds = $derived.by(() => {
+    const ids = new Set<string>();
+    for (const g of grouped) for (const i of g.items) ids.add(i.id);
+    if (showPurchasedSection) for (const i of purchasedItems) ids.add(i.id);
+    return ids;
+  });
+
+  const selectedItems = $derived(
+    data.items.filter((i) => selectedIds.has(i.id) && visibleIds.has(i.id))
+  );
   const allSelectedArePurchased = $derived(
     selectedItems.length > 0 && selectedItems.every((i) => i.purchasedAt !== null)
   );
@@ -189,7 +202,7 @@
           {/if}
         </div>
       {:else}
-        <div class="head-row" aria-hidden="true">
+        <div class="head-row">
           <span class="col-check"></span>
           <span class="col-name">Item</span>
           <span class="col-qty">Qty</span>
@@ -208,7 +221,12 @@
                   aria-label="Select {item.name}"
                 />
               </label>
-              <button type="button" class="row-body" onclick={() => openEdit(item)}>
+              <button
+                type="button"
+                class="row-body"
+                aria-label="Edit {item.name}"
+                onclick={() => openEdit(item)}
+              >
                 <span class="col-name">
                   <span class="name-line">
                     <span class="name">{item.name}</span>
@@ -257,7 +275,12 @@
                     aria-label="Select {item.name}"
                   />
                 </label>
-                <button type="button" class="row-body" onclick={() => openEdit(item)}>
+                <button
+                  type="button"
+                  class="row-body"
+                  aria-label="Edit {item.name}"
+                  onclick={() => openEdit(item)}
+                >
                   <span class="col-name">
                     <span class="name-line">
                       <span class="name">{item.name}</span>
@@ -287,10 +310,10 @@
 </main>
 
 <!-- Bulk bar: selection drives mark-purchased and remove -->
-{#if selectedIds.size > 0}
+{#if selectedItems.length > 0}
   <div class="bulk-bar" role="region" aria-label="Selected items">
     <div class="bulk-left">
-      <span class="bulk-count">{selectedIds.size} selected</span>
+      <span class="bulk-count">{selectedItems.length} selected</span>
       <button type="button" class="bulk-clear" onclick={clearSelection}>Clear</button>
     </div>
     <div class="bulk-actions">
@@ -300,8 +323,10 @@
           method="POST"
           action="?/setPurchased"
           use:enhance={() => {
+            bulkSubmitting = true;
             return async ({ update }) => {
               await update({ reset: false });
+              bulkSubmitting = false;
               clearSelection();
             };
           }}
@@ -310,10 +335,17 @@
             <input type="hidden" name="itemIds" value={item.id} />
           {/each}
           <input type="hidden" name="purchased" value="false" />
-          <Button type="submit" variant="primary" size="sm">Move back to list</Button>
+          <Button type="submit" variant="primary" size="sm" disabled={bulkSubmitting}>
+            Move back to list
+          </Button>
         </form>
       {:else}
-        <Button variant="primary" size="sm" on:click={() => (showConfirmPurchase = true)}>
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={bulkSubmitting}
+          on:click={() => (showConfirmPurchase = true)}
+        >
           Mark purchased
         </Button>
       {/if}
@@ -322,8 +354,10 @@
         method="POST"
         action="?/removeItems"
         use:enhance={() => {
+          bulkSubmitting = true;
           return async ({ update }) => {
             await update({ reset: false });
+            bulkSubmitting = false;
             clearSelection();
           };
         }}
@@ -331,7 +365,7 @@
         {#each selectedItems as item (item.id)}
           <input type="hidden" name="itemIds" value={item.id} />
         {/each}
-        <Button type="submit" variant="danger" size="sm">Remove</Button>
+        <Button type="submit" variant="danger" size="sm" disabled={bulkSubmitting}>Remove</Button>
       </form>
     </div>
   </div>
@@ -345,6 +379,7 @@
   purchasedByName={editingItem?.purchasedBy
     ? (memberName.get(editingItem.purchasedBy) ?? null)
     : null}
+  isOwner={editingItem?.addedBy === data.currentUserId}
 />
 
 <ConfirmPurchaseModal
@@ -353,7 +388,11 @@
   onDone={handlePurchaseConfirmed}
 />
 
-<CategoryManagerModal bind:open={showCategoryModal} categories={data.categories} />
+<CategoryManagerModal
+  bind:open={showCategoryModal}
+  categories={data.categories}
+  isAdmin={data.userRole === 'admin'}
+/>
 
 <style>
   main {

@@ -7,10 +7,13 @@
 
   let {
     open = $bindable(false),
-    categories = []
+    categories = [],
+    isAdmin = false
   }: {
     open: boolean;
     categories: Category[];
+    /** Only admins may delete a category; it re-categorises every affected item */
+    isAdmin?: boolean;
   } = $props();
 
   let newName = $state('');
@@ -34,8 +37,9 @@
 <Modal bind:open title="Shopping Categories" size="md">
   {#snippet children()}
     <p class="intro">
-      Categories are shared with the whole household. Deleting one keeps its items and moves them to
-      Uncategorised.
+      Categories are shared with the whole household. {isAdmin
+        ? 'Deleting one keeps its items and moves them to Uncategorised.'
+        : 'Only admins can delete a category.'}
     </p>
 
     <form
@@ -107,13 +111,15 @@
               <span class="cat-name">{c.name}</span>
               <div class="cat-actions">
                 <button type="button" class="text-btn" onclick={() => startEdit(c)}>Rename</button>
-                <button
-                  type="button"
-                  class="text-btn danger"
-                  onclick={() => (confirmDeleteId = c.id)}
-                >
-                  Delete
-                </button>
+                {#if isAdmin}
+                  <button
+                    type="button"
+                    class="text-btn danger"
+                    onclick={() => (confirmDeleteId = c.id)}
+                  >
+                    Delete
+                  </button>
+                {/if}
               </div>
             {/if}
           </li>

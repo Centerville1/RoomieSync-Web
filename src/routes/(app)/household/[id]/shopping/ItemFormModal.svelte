@@ -22,7 +22,8 @@
     categories = [],
     suggestions = [],
     item = null,
-    purchasedByName = null
+    purchasedByName = null,
+    isOwner = false
   }: {
     open: boolean;
     categories: Category[];
@@ -31,12 +32,14 @@
     item?: Item | null;
     /** Display name of whoever bought it, when it is already purchased */
     purchasedByName?: string | null;
+    /** True when the current user added this item; only they may change its scope */
+    isOwner?: boolean;
   } = $props();
 
   // Only credit a buyer while the item is still marked purchased, and only the
   // one recorded on the row — not whoever is about to press the button.
   const purchaseCredit = $derived(
-    item?.purchasedAt !== null && item?.purchasedBy ? purchasedByName : null
+    item && item.purchasedAt !== null && item.purchasedBy ? purchasedByName : null
   );
 
   const isEdit = $derived(item !== null);
@@ -85,13 +88,23 @@
     return Number.isFinite(n) && n > 0 ? n : 1;
   }
 
+  // Matches anywhere in the name, not just the start, so "towels" finds
+  // "Paper Towels". Prefix matches still rank first, then by how often the item
+  // has been added, so the most likely candidate stays at the top.
   const matches = $derived.by(() => {
     if (isEdit) return [];
     const q = name.trim().toLowerCase();
     if (q.length === 0) return [];
     return suggestions
-      .filter((s) => s.name.toLowerCase().startsWith(q) && s.name.toLowerCase() !== q)
-      .slice(0, 5);
+      .map((s) => ({ s, at: s.name.toLowerCase().indexOf(q) }))
+      .filter(({ s, at }) => at !== -1 && s.name.toLowerCase() !== q)
+      .sort((a, b) => {
+        const aPrefix = a.at === 0 ? 0 : 1;
+        const bPrefix = b.at === 0 ? 0 : 1;
+        return aPrefix - bPrefix || b.s.uses - a.s.uses || a.s.name.localeCompare(b.s.name);
+      })
+      .slice(0, 6)
+      .map(({ s }) => s);
   });
 
   function pick(s: Suggestion) {
@@ -111,7 +124,13 @@
   }
 
   function step(by: number) {
-    quantity = Math.max(1, quantity + by);
+    // An emptied number input binds to null, so coerce before the arithmetic
+    quantity = Math.max(1, (Number(quantity) || 1) + by);
+  }
+
+  // Guarantees a valid number reaches the server even if the field is left blank
+  function normalizeQuantity() {
+    quantity = Math.max(1, Math.floor(Number(quantity) || 1));
   }
 </script>
 
@@ -173,7 +192,7 @@
             <button
               type="button"
               onclick={() => step(-1)}
-              disabled={quantity <= 1}
+              disabled={(Number(quantity) || 1) <= 1}
               aria-label="Decrease quantity"
             >
               −
@@ -186,6 +205,8 @@
               inputmode="numeric"
               min="1"
               step="1"
+              required
+              onblur={normalizeQuantity}
             />
             <button type="button" onclick={() => step(1)} aria-label="Increase quantity">+</button>
           </div>
@@ -205,12 +226,37 @@
       <div class="field">
         <Textarea
           bind:value={notes}
+          id="item-notes"
           name="notes"
           label="Notes (optional)"
           placeholder="e.g. 2% not whole, the big box"
           rows={2}
         />
       </div>
+
+      {#if isEdit && isOwner}
+        <div class="field">
+          <span class="field-label">Who can see this</span>
+          <div class="scope-toggle">
+            <button
+              type="button"
+              class="scope-option"
+              class:active={visibility === 'shared'}
+              onclick={() => (visibility = 'shared')}
+            >
+              Everyone
+            </button>
+            <button
+              type="button"
+              class="scope-option"
+              class:active={visibility === 'personal'}
+              onclick={() => (visibility = 'personal')}
+            >
+              Just me
+            </button>
+          </div>
+        </div>
+      {/if}
 
       {#if isEdit}
         <!-- An action, not a statement of fact: the button says what pressing it
@@ -393,6 +439,41 @@
     color: var(--color-text-tertiary);
     font-size: 0.8rem;
     flex-shrink: 0;
+  }
+
+  .field-label {
+    display: block;
+    margin-bottom: var(--space-xs);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+  }
+
+  .scope-toggle {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    background-color: var(--color-bg-tertiary);
+    border-radius: var(--radius-md);
+  }
+
+  .scope-option {
+    flex: 1;
+    min-height: 40px;
+    border: none;
+    border-radius: calc(var(--radius-md) - 2px);
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .scope-option.active {
+    background-color: var(--color-bg-primary);
+    color: var(--color-primary);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
   }
 
   .purchase-block {

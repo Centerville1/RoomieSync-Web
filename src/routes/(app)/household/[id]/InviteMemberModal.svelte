@@ -4,6 +4,7 @@
   import Input from '$lib/components/Input.svelte';
   import Card from '$lib/components/Card.svelte';
   import { enhance, applyAction } from '$app/forms';
+  import { invalidateAll } from '$app/navigation';
 
   let {
     open = $bindable(false),
@@ -49,8 +50,11 @@
       action="{actionBase}?/inviteMember"
       use:enhance={() => {
         return async ({ result }) => {
-          // update() only writes the form prop for same-page actions, so apply
-          // the result explicitly to keep the error/success messages working.
+          // update() does two things: applies the result to the form prop (only
+          // for same-page actions, so useless here) and invalidates load data.
+          // Both halves are needed, so call them explicitly: applyAction keeps
+          // the error/success messages, invalidateAll refreshes the invite list.
+          await invalidateAll();
           await applyAction(result);
           if (result.type === 'success') {
             inviteEmail = '';
@@ -145,6 +149,7 @@
                     action="{actionBase}?/cancelInvite"
                     use:enhance={() => {
                       return async ({ result }) => {
+                        await invalidateAll();
                         await applyAction(result);
                       };
                     }}

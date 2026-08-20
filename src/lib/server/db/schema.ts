@@ -200,7 +200,9 @@ export const shoppingItems = sqliteTable('shopping_items', {
     .notNull()
     .default('shared'),
   name: text('name').notNull(),
-  quantity: text('quantity'), // free text: "2 gal", "a bunch"
+  // Stored as text for backwards compatibility, but the UI edits it as a whole
+  // number via a stepper. Units belong in `notes` ("2% not whole", "the big box").
+  quantity: text('quantity'),
   notes: text('notes'), // specification, editable by anyone who can see the item
   addedBy: text('added_by')
     .notNull()
