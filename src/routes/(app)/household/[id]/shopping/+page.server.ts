@@ -83,7 +83,9 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     })
     .from(shoppingItems)
     .where(visibleToUser(householdId, user.id))
-    .orderBy(desc(shoppingItems.createdAt))
+    // id breaks ties so two rows added in the same millisecond cannot yield a
+    // different suggestion run to run
+    .orderBy(desc(shoppingItems.createdAt), desc(shoppingItems.id))
     .limit(1000);
 
   const byName = new Map<
@@ -104,15 +106,11 @@ export const load: PageServerLoad = async ({ locals, params }) => {
       });
       continue;
     }
+    // Rows arrive newest-first, so the first one seen is the most recent and
+    // already holds both the spelling and the category. Later rows only add to
+    // the count: deliberately re-adding an item with no category should clear
+    // the remembered one, which an older categorised row must not override.
     existing.uses += 1;
-    if (created > existing.lastUsed) {
-      existing.name = row.name;
-      existing.lastUsed = created;
-    }
-    // Rows arrive newest-first, so the first categorised one wins
-    if (existing.categoryId === null && row.categoryId !== null) {
-      existing.categoryId = row.categoryId;
-    }
   }
 
   const suggestions = [...byName.values()]

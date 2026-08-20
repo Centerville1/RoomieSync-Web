@@ -15,7 +15,6 @@
   import BalanceChart from './BalanceChart.svelte';
   import { onMount } from 'svelte';
   import { page } from '$app/state';
-  import { replaceState } from '$app/navigation';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
   let showSplitCostModal = $state(false);
@@ -108,16 +107,29 @@
   // Nothing is carried across but the intent to split — items are never linked
   // to an expense — so this just opens the form.
   //
-  // An $effect rather than onMount: arriving from the shopping tab is a
-  // client-side navigation between two children of the same layout, so this
-  // component may already be mounted and onMount would never fire.
+  // An $effect rather than onMount, because arriving from the shopping tab is a
+  // client-side navigation between two children of the same layout: the page may
+  // already be mounted, and onMount would never fire.
+  //
+  // Reads only the param, not the whole url, and latches once consumed. The
+  // effect calls replaceState, which mutates page.url, so tracking the url
+  // itself would mean writing to the source it depends on. The latch also stops
+  // a dismissed modal springing back open if the param reappears via Back or a
+  // shared link.
+  // A latch, not a URL rewrite. Stripping the param with replaceState looked
+  // like the tidy option but bought nothing: replaceState updates page.state and
+  // the address bar without ever reassigning page.url, so the param stayed
+  // readable and any invalidateAll (which SplitCostModal's own submit triggers)
+  // re-ran this and reopened the modal over the saved expense. It also throws in
+  // dev when an effect outruns router startup. Handling the intent once is both
+  // simpler and correct.
+  const splitRequested = $derived(page.url.searchParams.get('split') === '1');
+  let splitHandled = $state(false);
+
   $effect(() => {
-    if (page.url.searchParams.get('split') !== '1') return;
+    if (!splitRequested || splitHandled) return;
+    splitHandled = true;
     showSplitCostModal = true;
-    // Drop the param so a refresh or back-navigation doesn't reopen it
-    const url = new URL(page.url);
-    url.searchParams.delete('split');
-    replaceState(url, page.state);
   });
 
   // Expense selection state

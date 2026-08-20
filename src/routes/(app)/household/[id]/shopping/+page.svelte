@@ -66,18 +66,28 @@
     personal: data.items.filter((i) => i.purchasedAt === null && i.visibility === 'personal').length
   }));
 
-  // Only rows currently on screen. Selecting items then changing a filter must
-  // not leave Remove or Mark purchased acting on rows the user can no longer see.
+  // Rows the active filters admit. Changing a filter must not leave Remove or
+  // Mark purchased acting on rows the user can no longer see.
+  //
+  // Deliberately independent of showPurchasedSection: that is a disclosure
+  // toggle, not a filter. Collapsing the panel must not quietly drop items the
+  // user already ticked, or a mixed selection would delete fewer rows than it
+  // listed.
   const visibleIds = $derived.by(() => {
     const ids = new Set<string>();
     for (const g of grouped) for (const i of g.items) ids.add(i.id);
-    if (showPurchasedSection) for (const i of purchasedItems) ids.add(i.id);
+    for (const i of purchasedItems) ids.add(i.id);
     return ids;
   });
 
   const selectedItems = $derived(
     data.items.filter((i) => selectedIds.has(i.id) && visibleIds.has(i.id))
   );
+  // The dialog must list exactly the rows the server will change: setPurchased
+  // skips ones already bought, so listing them as "will move off the list"
+  // would misreport the outcome.
+  const selectedUnpurchased = $derived(selectedItems.filter((i) => i.purchasedAt === null));
+
   const allSelectedArePurchased = $derived(
     selectedItems.length > 0 && selectedItems.every((i) => i.purchasedAt !== null)
   );
@@ -384,7 +394,7 @@
 
 <ConfirmPurchaseModal
   bind:open={showConfirmPurchase}
-  items={selectedItems}
+  items={selectedUnpurchased}
   onDone={handlePurchaseConfirmed}
 />
 
