@@ -782,8 +782,25 @@
   }
 
   @media (max-width: 767px) {
+    /* Table goes edge to edge; text content keeps its own inset below */
     main {
-      padding: var(--space-lg) var(--space-md) 6rem;
+      padding: var(--space-lg) 0 6rem;
+    }
+
+    .page-header,
+    .filter-bar,
+    .chips,
+    .error-message,
+    .purchased-section {
+      padding-left: var(--space-md);
+      padding-right: var(--space-md);
+    }
+
+    /* Square off the edges that now meet the viewport */
+    .table-wrapper {
+      border-radius: 0;
+      border-left: none;
+      border-right: none;
     }
 
     .page-header {
