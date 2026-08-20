@@ -350,6 +350,9 @@
   categories={data.categories}
   suggestions={data.suggestions}
   item={editingItem}
+  purchasedByName={editingItem?.purchasedBy
+    ? (memberName.get(editingItem.purchasedBy) ?? null)
+    : null}
 />
 
 <CategoryManagerModal bind:open={showCategoryModal} categories={data.categories} />

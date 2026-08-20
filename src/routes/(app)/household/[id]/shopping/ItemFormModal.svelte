@@ -14,20 +14,30 @@
     categoryId: string | null;
     visibility: 'shared' | 'personal';
     purchasedAt: Date | null;
+    purchasedBy: string | null;
   };
 
   let {
     open = $bindable(false),
     categories = [],
     suggestions = [],
-    item = null
+    item = null,
+    purchasedByName = null
   }: {
     open: boolean;
     categories: Category[];
     suggestions: Suggestion[];
     /** null = adding a new item, otherwise editing this one */
     item?: Item | null;
+    /** Display name of whoever bought it, when it is already purchased */
+    purchasedByName?: string | null;
   } = $props();
+
+  // Only credit a buyer while the item is still marked purchased, and only the
+  // one recorded on the row — not whoever is about to press the button.
+  const purchaseCredit = $derived(
+    item?.purchasedAt !== null && item?.purchasedBy ? purchasedByName : null
+  );
 
   const isEdit = $derived(item !== null);
 
@@ -203,10 +213,24 @@
       </div>
 
       {#if isEdit}
-        <label class="purchased-toggle">
-          <input type="checkbox" bind:checked={purchased} />
-          <span>Already purchased</span>
-        </label>
+        <!-- An action, not a statement of fact: the button says what pressing it
+             does, and the state above it says where the item currently stands. -->
+        <div class="purchase-block" class:is-purchased={purchased}>
+          {#if purchased}
+            <p class="purchase-state">
+              <span class="tick" aria-hidden="true">✓</span>
+              Purchased{purchaseCredit ? ` by ${purchaseCredit}` : ''}
+            </p>
+            <button type="button" class="purchase-action undo" onclick={() => (purchased = false)}>
+              Move back to the list
+            </button>
+          {:else}
+            <button type="button" class="purchase-action" onclick={() => (purchased = true)}>
+              <span class="tick" aria-hidden="true">✓</span>
+              Mark as purchased
+            </button>
+          {/if}
+        </div>
       {/if}
     </form>
   {/snippet}
@@ -371,19 +395,71 @@
     flex-shrink: 0;
   }
 
-  .purchased-toggle {
+  .purchase-block {
     display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    min-height: 44px;
-    color: var(--color-text-primary);
-    cursor: pointer;
+    flex-direction: column;
+    gap: var(--space-xs);
+    padding: var(--space-sm);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-secondary);
   }
 
-  .purchased-toggle input {
-    width: 20px;
-    height: 20px;
-    accent-color: var(--color-primary);
+  .purchase-block.is-purchased {
+    border-color: color-mix(in srgb, var(--color-success) 45%, transparent);
+    background-color: color-mix(in srgb, var(--color-success) 10%, transparent);
+  }
+
+  .purchase-state {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--color-success);
+  }
+
+  .purchase-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-xs);
+    width: 100%;
+    min-height: 44px;
+    padding: 0 var(--space-md);
+    border: 1px solid var(--color-success);
+    border-radius: var(--radius-md);
+    background-color: transparent;
+    color: var(--color-success);
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+
+  .purchase-action:hover {
+    background-color: color-mix(in srgb, var(--color-success) 14%, transparent);
+  }
+
+  /* The reverse action is secondary; it should not compete with the tick */
+  .purchase-action.undo {
+    min-height: 40px;
+    border-color: var(--color-border);
+    color: var(--color-text-secondary);
+    font-size: 0.88rem;
+    font-weight: 500;
+  }
+
+  .purchase-action.undo:hover {
+    background-color: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+  }
+
+  .tick {
+    font-size: 1rem;
+    line-height: 1;
   }
 
   .save-group {
