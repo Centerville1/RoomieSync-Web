@@ -96,6 +96,16 @@ After making major code changes, run these commands and fix errors:
 - **Payment Tracking**: Track if/when each person marked expense as paid
 - All-or-nothing payment per person (no partial payments in MVP)
 
+### Shopping List
+
+- **Scope**: every item is either `shared` with the household or `personal` to whoever added it. Personal items are visible and editable only by their author, enforced in every action's query rather than only in the list view
+- **Categories**: custom per household, shared by all members. Any member can add or rename; only admins can delete, since deleting also clears the category from every affected item
+- **Purchased state**: `purchasedAt IS NULL` is the source of truth for "still to buy". There is deliberately no `isPurchased` boolean, so state and timestamp cannot drift apart
+- **Quantity**: stored as text but edited as a whole number. Units belong in notes
+- **Notes**: a specification on the item ("2% not whole"), editable by anyone who can see it. Distinct from comments, which are not built
+- **No link to expenses**: items never record the expense they became. The list holds no prices, so a prefilled amount would be invented, and the connection answers nothing useful later. This keeps `createExpense` untouched by the shopping feature
+- **Autofill**: derived from past items in the same household, ranked prefix-match first then by frequency. No separate catalogue table
+
 ## User Flows
 
 ### Account & Household Management
@@ -151,7 +161,6 @@ After making major code changes, run these commands and fix errors:
 
 ## MVP Exclusions
 
-- No shopping list feature (original app had this)
 - No email notifications for invites
 - No password reset / email verification (future enhancement)
 - No partial payments

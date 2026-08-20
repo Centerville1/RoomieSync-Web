@@ -3,7 +3,8 @@
   import Button from '$lib/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
   import Badge from '$lib/components/Badge.svelte';
-  import { enhance } from '$app/forms';
+  import { enhance, applyAction } from '$app/forms';
+  import { invalidateAll } from '$app/navigation';
 
   type Member = {
     id: string;
@@ -26,6 +27,10 @@
     members: Member[];
     currentUserId: string;
   } = $props();
+
+  // Actions live on the expenses page; this modal renders from the household
+  // layout, so address them absolutely rather than relying on the current tab.
+  const actionBase = $derived(`/household/${householdId}`);
 
   let newName = $state('');
   let showDeleteConfirm = $state(false);
@@ -78,11 +83,12 @@
         <h3>Rename Household</h3>
         <form
           method="POST"
-          action="?/renameHousehold"
+          action="{actionBase}?/renameHousehold"
           use:enhance={() => {
             isSubmitting = true;
-            return async ({ update }) => {
-              await update();
+            return async ({ result }) => {
+              if (result.type !== 'redirect') await invalidateAll();
+              await applyAction(result);
               isSubmitting = false;
               handleClose();
             };
@@ -111,11 +117,12 @@
                 {#if editingMemberId === member.id}
                   <form
                     method="POST"
-                    action="?/updateDisplayName"
+                    action="{actionBase}?/updateDisplayName"
                     class="edit-name-inline"
                     use:enhance={() => {
-                      return async ({ update }) => {
-                        await update();
+                      return async ({ result }) => {
+                        if (result.type !== 'redirect') await invalidateAll();
+                        await applyAction(result);
                         cancelEditingDisplayName();
                       };
                     }}
@@ -183,11 +190,12 @@
                   <div class="kick-actions">
                     <form
                       method="POST"
-                      action="?/kickMember"
+                      action="{actionBase}?/kickMember"
                       use:enhance={() => {
                         isSubmitting = true;
-                        return async ({ update }) => {
-                          await update();
+                        return async ({ result }) => {
+                          if (result.type !== 'redirect') await invalidateAll();
+                          await applyAction(result);
                           isSubmitting = false;
                           kickingMemberId = null;
                         };
@@ -236,11 +244,12 @@
             <div class="delete-actions">
               <form
                 method="POST"
-                action="?/deleteHousehold"
+                action="{actionBase}?/deleteHousehold"
                 use:enhance={() => {
                   isSubmitting = true;
-                  return async ({ update }) => {
-                    await update();
+                  return async ({ result }) => {
+                    if (result.type !== 'redirect') await invalidateAll();
+                    await applyAction(result);
                     isSubmitting = false;
                   };
                 }}

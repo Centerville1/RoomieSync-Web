@@ -22,13 +22,27 @@
 </footer>
 
 <style>
+  /*
+   * Default: in-flow at the end of the page, so it scrolls into view instead of
+   * floating over content. Anything narrower than a full laptop screen lacks the
+   * side gutters a pinned label needs.
+   */
   .app-footer {
-    position: fixed;
-    bottom: 0;
-    right: 0;
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-lg) var(--space-md) var(--space-md);
     font-size: 0.75rem;
     color: var(--color-text-tertiary);
-    pointer-events: none;
+    text-align: center;
+  }
+
+  /* Wide screens: content caps at 1200px, so there is gutter room to pin it. */
+  @media (min-width: 1200px) {
+    .app-footer {
+      position: fixed;
+      bottom: 0;
+      right: 0;
+      padding: var(--space-sm) var(--space-md);
+      text-align: right;
+      pointer-events: none;
+    }
   }
 </style>

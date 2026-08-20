@@ -3,17 +3,24 @@
   import Button from '$lib/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
   import Card from '$lib/components/Card.svelte';
-  import { enhance } from '$app/forms';
+  import { enhance, applyAction } from '$app/forms';
+  import { invalidateAll } from '$app/navigation';
 
   let {
     open = $bindable(false),
     pendingInvites = [],
+    householdId,
     form
   }: {
     open: boolean;
     pendingInvites: Array<{ id: string; invitedEmail: string; createdAt: Date }>;
+    householdId: string;
     form?: { error?: string; emailFailed?: boolean; emailSent?: boolean; resent?: boolean } | null;
   } = $props();
+
+  // Actions live on the expenses page, so they are addressed absolutely: this
+  // modal renders from the household layout and can be open on any tab.
+  const actionBase = $derived(`/household/${householdId}`);
 
   let inviteEmail = $state('');
   let resendingId = $state<string | null>(null);
@@ -40,10 +47,15 @@
   {#snippet children()}
     <form
       method="POST"
-      action="?/inviteMember"
+      action="{actionBase}?/inviteMember"
       use:enhance={() => {
-        return async ({ result, update }) => {
-          await update();
+        return async ({ result }) => {
+          // update() does two things: applies the result to the form prop (only
+          // for same-page actions, so useless here) and invalidates load data.
+          // Both halves are needed, so call them explicitly: applyAction keeps
+          // the error/success messages, invalidateAll refreshes the invite list.
+          await invalidateAll();
+          await applyAction(result);
           if (result.type === 'success') {
             inviteEmail = '';
           }
@@ -105,7 +117,7 @@
                 <div class="invite-actions">
                   <form
                     method="POST"
-                    action="?/resendInvite"
+                    action="{actionBase}?/resendInvite"
                     use:enhance={() => {
                       resendingId = invite.id;
                       resendSuccess = null;
@@ -132,7 +144,16 @@
                       {resendingId === invite.id ? 'Sending...' : 'Resend'}
                     </Button>
                   </form>
-                  <form method="POST" action="?/cancelInvite" use:enhance>
+                  <form
+                    method="POST"
+                    action="{actionBase}?/cancelInvite"
+                    use:enhance={() => {
+                      return async ({ result }) => {
+                        await invalidateAll();
+                        await applyAction(result);
+                      };
+                    }}
+                  >
                     <input type="hidden" name="inviteId" value={invite.id} />
                     <Button type="submit" variant="outline" size="sm">Cancel</Button>
                   </form>

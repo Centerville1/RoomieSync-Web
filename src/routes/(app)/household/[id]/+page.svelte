@@ -4,8 +4,6 @@
   import Button from '$lib/components/Button.svelte';
   import Badge from '$lib/components/Badge.svelte';
   import Input from '$lib/components/Input.svelte';
-  import Header from '$lib/components/Header.svelte';
-  import InviteMemberModal from './InviteMemberModal.svelte';
   import SplitCostModal from './SplitCostModal.svelte';
   import PayExpensesModal from './PayExpensesModal.svelte';
   import EditExpenseModal from './EditExpenseModal.svelte';
@@ -13,21 +11,19 @@
   import ImportExpenseModal from './ImportExpenseModal.svelte';
   import CancelPaymentModal from './CancelPaymentModal.svelte';
   import NudgeModal from './NudgeModal.svelte';
-  import HouseholdSettingsModal from './HouseholdSettingsModal.svelte';
   import ExpenseGrid from './ExpenseGrid.svelte';
   import BalanceChart from './BalanceChart.svelte';
   import { onMount } from 'svelte';
+  import { page } from '$app/state';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
   let showSplitCostModal = $state(false);
-  let showInviteModal = $state(false);
   let showPayExpensesModal = $state(false);
   let showEditExpenseModal = $state(false);
   let showDeleteExpenseModal = $state(false);
   let showImportExpenseModal = $state(false);
   let showCancelPaymentModal = $state(false);
   let showNudgeModal = $state(false);
-  let showSettingsModal = $state(false);
   let importExpenseDefaultCreatorId = $state('');
 
   // Nudge state
@@ -105,6 +101,35 @@
         }, 8000);
       }
     }
+  });
+
+  // The shopping tab links here with ?split=1 after someone picks up items.
+  // Nothing is carried across but the intent to split — items are never linked
+  // to an expense — so this just opens the form.
+  //
+  // An $effect rather than onMount, because arriving from the shopping tab is a
+  // client-side navigation between two children of the same layout: the page may
+  // already be mounted, and onMount would never fire.
+  //
+  // Reads only the param, not the whole url, and latches once consumed. The
+  // effect calls replaceState, which mutates page.url, so tracking the url
+  // itself would mean writing to the source it depends on. The latch also stops
+  // a dismissed modal springing back open if the param reappears via Back or a
+  // shared link.
+  // A latch, not a URL rewrite. Stripping the param with replaceState looked
+  // like the tidy option but bought nothing: replaceState updates page.state and
+  // the address bar without ever reassigning page.url, so the param stayed
+  // readable and any invalidateAll (which SplitCostModal's own submit triggers)
+  // re-ran this and reopened the modal over the saved expense. It also throws in
+  // dev when an effect outruns router startup. Handling the intent once is both
+  // simpler and correct.
+  const splitRequested = $derived(page.url.searchParams.get('split') === '1');
+  let splitHandled = $state(false);
+
+  $effect(() => {
+    if (!splitRequested || splitHandled) return;
+    splitHandled = true;
+    showSplitCostModal = true;
   });
 
   // Expense selection state
@@ -195,52 +220,7 @@
   }
 </script>
 
-<div class="household-container">
-  <Header user={{ name: data.userName }} showBackButton />
-
-  <!-- Household Header -->
-  <header class="household-header">
-    {#if data.household.bannerUrl}
-      <div class="banner" style="background-image: url({data.household.bannerUrl})"></div>
-    {/if}
-    <div class="header-content container">
-      {#if data.household.imageUrl}
-        <img src={data.household.imageUrl} alt={data.household.name} class="household-avatar" />
-      {/if}
-      <div class="header-info">
-        <h1>{data.household.name}</h1>
-        <p>{data.members.length} {data.members.length === 1 ? 'member' : 'members'}</p>
-      </div>
-      <div class="header-actions">
-        {#if data.userRole === 'admin'}
-          <Button variant="secondary" size="lg" on:click={() => (showInviteModal = true)}
-            >Invite Members</Button
-          >
-          <button
-            type="button"
-            class="settings-btn"
-            title="Household Settings"
-            onclick={() => (showSettingsModal = true)}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              width="22"
-              height="22"
-            >
-              <circle cx="12" cy="12" r="3" />
-              <path
-                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-              />
-            </svg>
-          </button>
-        {/if}
-      </div>
-    </div>
-  </header>
-
+<div class="tab-content">
   <main class="container">
     <!-- Summary Dashboard -->
     <section class="summary-dashboard">
@@ -349,9 +329,6 @@
   onPaymentComplete={handlePaymentComplete}
 />
 
-<!-- Invite Member Modal -->
-<InviteMemberModal bind:open={showInviteModal} pendingInvites={data.pendingInvites} {form} />
-
 <!-- Edit Expense Modal -->
 <EditExpenseModal
   bind:open={showEditExpenseModal}
@@ -393,17 +370,6 @@
   onNudgeSent={handleNudgeSent}
 />
 
-<!-- Household Settings Modal (Admin Only) -->
-{#if data.userRole === 'admin'}
-  <HouseholdSettingsModal
-    bind:open={showSettingsModal}
-    householdName={data.household.name}
-    householdId={data.household.id}
-    members={data.members}
-    currentUserId={data.currentUserId}
-  />
-{/if}
-
 <!-- Nudge Toast Notification -->
 {#if showNudgeToast && nudgeToastData}
   <div class="nudge-toast" role="alert">
@@ -430,84 +396,9 @@
 {/if}
 
 <style>
-  .household-container {
-    min-height: 100vh;
+  .tab-content {
+    /* Header and tabs live in +layout.svelte */
     background-color: var(--color-bg-secondary);
-  }
-
-  /* Household Header */
-  .household-header {
-    background-color: var(--color-bg-primary);
-    border-bottom: 1px solid var(--color-border);
-    position: relative;
-  }
-
-  .banner {
-    width: 100%;
-    height: 12rem;
-    background-size: cover;
-    background-position: center;
-    background-color: var(--color-bg-tertiary);
-  }
-
-  .header-content {
-    padding: var(--space-xl);
-    display: flex;
-    gap: var(--space-lg);
-    align-items: center;
-    flex-wrap: wrap;
-  }
-
-  .household-avatar {
-    width: 6rem;
-    height: 6rem;
-    border-radius: var(--radius-lg);
-    object-fit: cover;
-    background-color: var(--color-bg-tertiary);
-    border: 4px solid var(--color-bg-primary);
-  }
-
-  .header-info {
-    flex: 1;
-    min-width: 200px;
-  }
-
-  .header-info h1 {
-    margin: 0 0 var(--space-xs) 0;
-    font-size: 2rem;
-    color: var(--color-text-primary);
-  }
-
-  .header-info p {
-    margin: 0;
-    color: var(--color-text-secondary);
-  }
-
-  .header-actions {
-    display: flex;
-    gap: var(--space-md);
-    align-items: center;
-  }
-
-  .settings-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    padding: 0;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background-color: var(--color-bg-secondary);
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .settings-btn:hover {
-    background-color: var(--color-bg-tertiary);
-    color: var(--color-text-primary);
-    border-color: var(--color-text-tertiary);
   }
 
   main {
@@ -641,25 +532,6 @@
     font-size: 0.75rem;
     font-weight: normal;
     color: var(--color-text-tertiary);
-  }
-
-  @media (max-width: 768px) {
-    .header-content {
-      flex-direction: column;
-      align-items: flex-start;
-    }
-
-    .header-actions {
-      width: 100%;
-    }
-
-    .header-actions :global(button) {
-      width: 100%;
-    }
-
-    .header-info h1 {
-      font-size: 1.5rem;
-    }
   }
 
   /* Nudge Toast Styles */

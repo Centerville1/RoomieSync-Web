@@ -18,42 +18,15 @@ import { createInviteSignature } from '$lib/server/invite-signature';
 
 const PAGE_SIZE = 20;
 
-export const load: PageServerLoad = async ({ locals, params }) => {
+export const load: PageServerLoad = async ({ locals, params, parent }) => {
   if (!locals.user) {
     throw redirect(302, '/login');
   }
 
   const householdId = params.id;
 
-  // Fetch household and verify user is a member
-  const householdData = await db
-    .select({
-      household: households,
-      member: householdMembers
-    })
-    .from(households)
-    .innerJoin(householdMembers, eq(households.id, householdMembers.householdId))
-    .where(and(eq(households.id, householdId), eq(householdMembers.userId, locals.user.id)))
-    .limit(1);
-
-  if (householdData.length === 0) {
-    throw error(404, 'Household not found or you do not have access');
-  }
-
-  // Fetch all members of the household
-  const members = await db
-    .select({
-      id: users.id,
-      name: users.name,
-      email: users.email,
-      avatar: users.avatar,
-      role: householdMembers.role,
-      displayName: householdMembers.displayName,
-      joinedAt: householdMembers.joinedAt
-    })
-    .from(householdMembers)
-    .innerJoin(users, eq(householdMembers.userId, users.id))
-    .where(eq(householdMembers.householdId, householdId));
+  // Household, membership check, and members come from +layout.server.ts
+  const { members } = await parent();
 
   // Get total expense count for pagination
   const totalCountResult = await db
@@ -93,16 +66,6 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   }));
 
   const currentUserId = locals.user.id;
-
-  // Fetch pending invites for this household (for admins)
-  const pendingInvites = await db
-    .select({
-      id: invites.id,
-      invitedEmail: invites.invitedEmail,
-      createdAt: invites.createdAt
-    })
-    .from(invites)
-    .where(and(eq(invites.householdId, householdId), eq(invites.used, false)));
 
   // Calculate balances between current user and all other members
   // This needs to look at ALL expenses, not just paginated ones
@@ -370,15 +333,9 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   const nudgesReceived = recentNudges.filter((n) => n.toUserId === currentUserId);
 
   return {
-    household: householdData[0].household,
-    userRole: householdData[0].member.role,
-    currentUserId,
-    userName: locals.user.name,
-    members,
     expenses: expensesWithSplits,
     totalExpenses,
     hasMoreExpenses: totalExpenses > PAGE_SIZE,
-    pendingInvites,
     memberBalances,
     balanceHistory,
     nudgesSent,
@@ -602,7 +559,15 @@ export const actions: Actions = {
     }
 
     // Delete the invite
-    await db.delete(invites).where(eq(invites.id, inviteId));
+    // Scope to this household, matching resendInvite: without it an admin of any
+    // household could cancel an invite belonging to another one.
+    const cancelled = await db
+      .delete(invites)
+      .where(and(eq(invites.id, inviteId), eq(invites.householdId, householdId)));
+
+    if (cancelled.rowsAffected === 0) {
+      return fail(404, { error: 'Invite not found' });
+    }
 
     return { success: true };
   },
