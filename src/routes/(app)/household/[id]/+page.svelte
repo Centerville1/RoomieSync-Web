@@ -4,7 +4,6 @@
   import Button from '$lib/components/Button.svelte';
   import Badge from '$lib/components/Badge.svelte';
   import Input from '$lib/components/Input.svelte';
-  import InviteMemberModal from './InviteMemberModal.svelte';
   import SplitCostModal from './SplitCostModal.svelte';
   import PayExpensesModal from './PayExpensesModal.svelte';
   import EditExpenseModal from './EditExpenseModal.svelte';
@@ -12,21 +11,18 @@
   import ImportExpenseModal from './ImportExpenseModal.svelte';
   import CancelPaymentModal from './CancelPaymentModal.svelte';
   import NudgeModal from './NudgeModal.svelte';
-  import HouseholdSettingsModal from './HouseholdSettingsModal.svelte';
   import ExpenseGrid from './ExpenseGrid.svelte';
   import BalanceChart from './BalanceChart.svelte';
   import { onMount } from 'svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
   let showSplitCostModal = $state(false);
-  let showInviteModal = $state(false);
   let showPayExpensesModal = $state(false);
   let showEditExpenseModal = $state(false);
   let showDeleteExpenseModal = $state(false);
   let showImportExpenseModal = $state(false);
   let showCancelPaymentModal = $state(false);
   let showNudgeModal = $state(false);
-  let showSettingsModal = $state(false);
   let importExpenseDefaultCreatorId = $state('');
 
   // Nudge state
@@ -195,34 +191,6 @@
 </script>
 
 <div class="tab-content">
-  {#if data.userRole === 'admin'}
-    <div class="container admin-toolbar">
-      <Button variant="secondary" size="lg" on:click={() => (showInviteModal = true)}
-        >Invite Members</Button
-      >
-      <button
-        type="button"
-        class="settings-btn"
-        title="Household Settings"
-        onclick={() => (showSettingsModal = true)}
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          width="22"
-          height="22"
-        >
-          <circle cx="12" cy="12" r="3" />
-          <path
-            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-          />
-        </svg>
-      </button>
-    </div>
-  {/if}
-
   <main class="container">
     <!-- Summary Dashboard -->
     <section class="summary-dashboard">
@@ -331,9 +299,6 @@
   onPaymentComplete={handlePaymentComplete}
 />
 
-<!-- Invite Member Modal -->
-<InviteMemberModal bind:open={showInviteModal} pendingInvites={data.pendingInvites} {form} />
-
 <!-- Edit Expense Modal -->
 <EditExpenseModal
   bind:open={showEditExpenseModal}
@@ -375,17 +340,6 @@
   onNudgeSent={handleNudgeSent}
 />
 
-<!-- Household Settings Modal (Admin Only) -->
-{#if data.userRole === 'admin'}
-  <HouseholdSettingsModal
-    bind:open={showSettingsModal}
-    householdName={data.household.name}
-    householdId={data.household.id}
-    members={data.members}
-    currentUserId={data.currentUserId}
-  />
-{/if}
-
 <!-- Nudge Toast Notification -->
 {#if showNudgeToast && nudgeToastData}
   <div class="nudge-toast" role="alert">
@@ -415,35 +369,6 @@
   .tab-content {
     /* Header and tabs live in +layout.svelte */
     background-color: var(--color-bg-secondary);
-  }
-
-  .admin-toolbar {
-    display: flex;
-    gap: var(--space-md);
-    align-items: center;
-    justify-content: flex-end;
-    padding: var(--space-md) var(--space-md) 0;
-  }
-
-  .settings-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    padding: 0;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background-color: var(--color-bg-secondary);
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .settings-btn:hover {
-    background-color: var(--color-bg-tertiary);
-    color: var(--color-text-primary);
-    border-color: var(--color-text-tertiary);
   }
 
   main {
@@ -577,13 +502,6 @@
     font-size: 0.75rem;
     font-weight: normal;
     color: var(--color-text-tertiary);
-  }
-
-  @media (max-width: 767px) {
-    /* Invite button fills the row; settings stays a fixed-size icon beside it */
-    .admin-toolbar :global(.btn) {
-      flex: 1;
-    }
   }
 
   /* Nudge Toast Styles */

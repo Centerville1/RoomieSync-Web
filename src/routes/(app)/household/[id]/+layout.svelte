@@ -1,9 +1,15 @@
 <script lang="ts">
-  import type { LayoutData } from './$types';
+  import type { LayoutData, ActionData } from './$types';
   import Header from '$lib/components/Header.svelte';
+  import Button from '$lib/components/Button.svelte';
+  import InviteMemberModal from './InviteMemberModal.svelte';
+  import HouseholdSettingsModal from './HouseholdSettingsModal.svelte';
   import { page } from '$app/state';
 
-  let { data, children }: { data: LayoutData; children: any } = $props();
+  let { data, children, form }: { data: LayoutData; children: any; form: ActionData } = $props();
+
+  let showInviteModal = $state(false);
+  let showSettingsModal = $state(false);
 
   const basePath = $derived(`/household/${data.household.id}`);
   const currentPath = $derived(page.url.pathname);
@@ -29,6 +35,33 @@
         <h1>{data.household.name}</h1>
         <p>{data.members.length} {data.members.length === 1 ? 'member' : 'members'}</p>
       </div>
+      {#if data.userRole === 'admin'}
+        <div class="header-actions">
+          <Button variant="secondary" size="lg" on:click={() => (showInviteModal = true)}
+            >Invite Members</Button
+          >
+          <button
+            type="button"
+            class="settings-btn"
+            title="Household Settings"
+            onclick={() => (showSettingsModal = true)}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              width="22"
+              height="22"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+              />
+            </svg>
+          </button>
+        </div>
+      {/if}
     </div>
 
     <!-- Tab bar -->
@@ -42,13 +75,33 @@
         class:active={isShoppingTab}
         aria-current={isShoppingTab}
       >
-        Shopping
+        Shopping List
+        <span class="tab-count" class:empty={data.openShoppingItems === 0}>
+          {data.openShoppingItems}
+        </span>
       </a>
     </nav>
   </header>
 
   {@render children()}
 </div>
+
+{#if data.userRole === 'admin'}
+  <InviteMemberModal
+    bind:open={showInviteModal}
+    pendingInvites={data.pendingInvites}
+    householdId={data.household.id}
+    {form}
+  />
+
+  <HouseholdSettingsModal
+    bind:open={showSettingsModal}
+    householdName={data.household.name}
+    householdId={data.household.id}
+    members={data.members}
+    currentUserId={data.currentUserId}
+  />
+{/if}
 
 <style>
   .household-container {
@@ -103,10 +156,37 @@
     color: var(--color-text-secondary);
   }
 
+  .header-actions {
+    display: flex;
+    gap: var(--space-md);
+    align-items: center;
+  }
+
+  .settings-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-secondary);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .settings-btn:hover {
+    background-color: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+    border-color: var(--color-text-tertiary);
+  }
+
   /* Tab bar */
   .tabs {
     display: flex;
-    gap: var(--space-lg);
+    gap: var(--space-sm);
     padding: 0 var(--space-xl);
     /* Scrollable rather than wrapping if more tabs are added later */
     overflow-x: auto;
@@ -119,30 +199,59 @@
 
   .tab {
     position: relative;
-    padding: var(--space-sm) var(--space-xs);
+    padding: var(--space-md) var(--space-lg);
     /* Comfortable touch target on mobile */
-    min-height: 44px;
+    min-height: 48px;
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
-    font-size: 1rem;
+    gap: var(--space-sm);
+    font-size: 1.05rem;
     font-weight: 600;
     color: var(--color-text-secondary);
     text-decoration: none;
     white-space: nowrap;
-    border-bottom: 3px solid transparent;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    /* Sits on the header's bottom border so the active tab merges with the page */
+    margin-bottom: -1px;
     transition:
       color 0.15s ease,
-      border-color 0.15s ease;
+      background-color 0.15s ease;
   }
 
-  .tab:hover {
+  .tab:hover:not(.active) {
     color: var(--color-text-primary);
+    background-color: var(--color-bg-secondary);
   }
 
   .tab.active {
     color: var(--color-primary);
-    border-bottom-color: var(--color-primary);
+    background-color: var(--color-bg-secondary);
+    border-color: var(--color-border);
+    box-shadow: inset 0 3px 0 var(--color-primary);
+  }
+
+  /* Count chip — always rendered, muted at zero */
+  .tab-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.5rem;
+    height: 1.5rem;
+    padding: 0 0.4rem;
+    border-radius: 999px;
+    background-color: var(--color-primary);
+    color: #fff;
+    font-size: 0.78rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+  .tab-count.empty {
+    background-color: var(--color-bg-tertiary);
+    color: var(--color-text-tertiary);
   }
 
   @media (max-width: 767px) {
@@ -173,9 +282,25 @@
       font-size: 0.85rem;
     }
 
+    .header-actions {
+      width: 100%;
+    }
+
+    .header-actions :global(.btn) {
+      flex: 1;
+    }
+
     .tabs {
-      padding: 0 var(--space-md);
-      gap: var(--space-md);
+      padding: 0 var(--space-sm);
+      gap: 2px;
+    }
+
+    /* Split the width evenly so both tabs are full-size touch targets */
+    .tab {
+      flex: 1;
+      justify-content: center;
+      padding: var(--space-md) var(--space-sm);
+      font-size: 0.98rem;
     }
   }
 </style>

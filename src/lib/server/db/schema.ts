@@ -168,3 +168,48 @@ export const nudgeHistory = sqliteTable('nudge_history', {
 
 export type NudgeHistory = typeof nudgeHistory.$inferSelect;
 export type NewNudgeHistory = typeof nudgeHistory.$inferInsert;
+
+// Shopping list categories - custom per household
+export const shoppingCategories = sqliteTable('shopping_categories', {
+  id: text('id').primaryKey(),
+  householdId: text('household_id')
+    .notNull()
+    .references(() => households.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  color: text('color'),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
+});
+
+export type ShoppingCategory = typeof shoppingCategories.$inferSelect;
+export type NewShoppingCategory = typeof shoppingCategories.$inferInsert;
+
+// Shopping list items
+// Note: purchasedAt is the source of truth for "purchased" (NULL = still to buy)
+// rather than a separate boolean, so state and timestamp can't drift apart.
+export const shoppingItems = sqliteTable('shopping_items', {
+  id: text('id').primaryKey(),
+  householdId: text('household_id')
+    .notNull()
+    .references(() => households.id, { onDelete: 'cascade' }),
+  // set null, not cascade: deleting a category must never delete its items
+  categoryId: text('category_id').references(() => shoppingCategories.id, {
+    onDelete: 'set null'
+  }),
+  visibility: text('visibility', { enum: ['shared', 'personal'] })
+    .notNull()
+    .default('shared'),
+  name: text('name').notNull(),
+  quantity: text('quantity'), // free text: "2 gal", "a bunch"
+  notes: text('notes'), // specification, editable by anyone who can see the item
+  addedBy: text('added_by')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  purchasedBy: text('purchased_by').references(() => users.id, { onDelete: 'set null' }),
+  purchasedAt: integer('purchased_at', { mode: 'timestamp' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
+});
+
+export type ShoppingItem = typeof shoppingItems.$inferSelect;
+export type NewShoppingItem = typeof shoppingItems.$inferInsert;

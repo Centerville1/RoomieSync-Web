@@ -27,6 +27,10 @@
     currentUserId: string;
   } = $props();
 
+  // Actions live on the expenses page; this modal renders from the household
+  // layout, so address them absolutely rather than relying on the current tab.
+  const actionBase = $derived(`/household/${householdId}`);
+
   let newName = $state('');
   let showDeleteConfirm = $state(false);
   let deleteConfirmText = $state('');
@@ -78,7 +82,7 @@
         <h3>Rename Household</h3>
         <form
           method="POST"
-          action="?/renameHousehold"
+          action="{actionBase}?/renameHousehold"
           use:enhance={() => {
             isSubmitting = true;
             return async ({ update }) => {
@@ -111,7 +115,7 @@
                 {#if editingMemberId === member.id}
                   <form
                     method="POST"
-                    action="?/updateDisplayName"
+                    action="{actionBase}?/updateDisplayName"
                     class="edit-name-inline"
                     use:enhance={() => {
                       return async ({ update }) => {
@@ -183,7 +187,7 @@
                   <div class="kick-actions">
                     <form
                       method="POST"
-                      action="?/kickMember"
+                      action="{actionBase}?/kickMember"
                       use:enhance={() => {
                         isSubmitting = true;
                         return async ({ update }) => {
@@ -236,7 +240,7 @@
             <div class="delete-actions">
               <form
                 method="POST"
-                action="?/deleteHousehold"
+                action="{actionBase}?/deleteHousehold"
                 use:enhance={() => {
                   isSubmitting = true;
                   return async ({ update }) => {

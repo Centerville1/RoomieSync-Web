@@ -67,16 +67,6 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
 
   const currentUserId = locals.user.id;
 
-  // Fetch pending invites for this household (for admins)
-  const pendingInvites = await db
-    .select({
-      id: invites.id,
-      invitedEmail: invites.invitedEmail,
-      createdAt: invites.createdAt
-    })
-    .from(invites)
-    .where(and(eq(invites.householdId, householdId), eq(invites.used, false)));
-
   // Calculate balances between current user and all other members
   // This needs to look at ALL expenses, not just paginated ones
   // For each member: "owes you" = unpaid splits on expenses YOU created
@@ -346,7 +336,6 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
     expenses: expensesWithSplits,
     totalExpenses,
     hasMoreExpenses: totalExpenses > PAGE_SIZE,
-    pendingInvites,
     memberBalances,
     balanceHistory,
     nudgesSent,
