@@ -15,6 +15,16 @@
   // rather than hardcoding a height that changes with the breakpoint.
   let bannerHeight = $state(0);
 
+  // The tab bar is fixed to the bottom on mobile, so the floating action bars
+  // and the page's bottom padding need to know how tall it is.
+  let tabsHeight = $state(0);
+
+  $effect(() => {
+    if (tabsHeight > 0) {
+      document.documentElement.style.setProperty('--tabbar-height', `${tabsHeight}px`);
+    }
+  });
+
   // Nobody else here yet and nothing pending: inviting is the only useful thing
   // an admin can do, so it earns a full CTA. After that it shrinks to a link
   // beside the member count.
@@ -111,14 +121,28 @@
     </div>
 
     <!-- Tab bar -->
-    <nav class="tabs container" aria-label="Household sections">
+    <nav class="tabs container" aria-label="Household sections" bind:clientHeight={tabsHeight}>
       <a
         href={basePath}
         class="tab"
         class:active={isExpensesTab}
         aria-current={isExpensesTab ? 'page' : undefined}
       >
-        Expenses
+        <svg
+          class="tab-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M3 10.5 12 3l9 7.5" />
+          <path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5" />
+          <path d="M9.5 21v-6h5v6" />
+        </svg>
+        <span class="tab-label">Home</span>
       </a>
       <a
         href="{basePath}/shopping"
@@ -126,10 +150,26 @@
         class:active={isShoppingTab}
         aria-current={isShoppingTab ? 'page' : undefined}
       >
-        Shopping List
-        <span class="tab-count" class:empty={data.openShoppingItems === 0}>
-          {data.openShoppingItems}
+        <span class="tab-icon-wrap">
+          <svg
+            class="tab-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M3 4h2l2.4 11.2a1 1 0 0 0 1 .8h8.2a1 1 0 0 0 1-.8L20 7H6" />
+            <circle cx="9.5" cy="20" r="1.4" />
+            <circle cx="17" cy="20" r="1.4" />
+          </svg>
+          <span class="tab-count" class:empty={data.openShoppingItems === 0}>
+            {data.openShoppingItems}
+          </span>
         </span>
+        <span class="tab-label">Shopping List</span>
       </a>
     </nav>
   </header>
@@ -199,27 +239,27 @@
 
   .banner {
     width: 100%;
-    height: 12rem;
+    height: 8rem;
     background-size: cover;
     background-position: center;
     background-color: var(--color-bg-tertiary);
   }
 
   .header-content {
-    padding: var(--space-xl) var(--space-xl) var(--space-md);
+    padding: var(--space-md) var(--space-xl) var(--space-sm);
     display: flex;
-    gap: var(--space-lg);
+    gap: var(--space-md);
     align-items: center;
     flex-wrap: wrap;
   }
 
   .household-avatar {
-    width: 6rem;
-    height: 6rem;
+    width: 3rem;
+    height: 3rem;
     border-radius: var(--radius-lg);
     object-fit: cover;
     background-color: var(--color-bg-tertiary);
-    border: 4px solid var(--color-bg-primary);
+    border: 2px solid var(--color-bg-primary);
   }
 
   .header-info {
@@ -228,14 +268,15 @@
   }
 
   .header-info h1 {
-    margin: 0 0 var(--space-xs) 0;
-    font-size: 2rem;
+    margin: 0 0 2px 0;
+    font-size: 1.4rem;
     color: var(--color-text-primary);
   }
 
   .header-info p {
     margin: 0;
     color: var(--color-text-secondary);
+    font-size: 0.9rem;
   }
 
   .member-line {
@@ -310,7 +351,7 @@
   /* Tab bar */
   .tabs {
     display: flex;
-    gap: var(--space-sm);
+    gap: var(--space-xl);
     padding: 0 var(--space-xl);
     /* Scrollable rather than wrapping if more tabs are added later */
     overflow-x: auto;
@@ -321,39 +362,48 @@
     display: none;
   }
 
+  /* A plain underline rather than a rounded, bordered box. The box read as a
+     stray shape floating in the header instead of a tab. */
   .tab {
     position: relative;
-    padding: var(--space-md) var(--space-lg);
+    padding: var(--space-sm) var(--space-xs);
     /* Comfortable touch target on mobile */
-    min-height: 48px;
+    min-height: 42px;
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-    font-size: 1.05rem;
+    font-size: 0.95rem;
     font-weight: 600;
     color: var(--color-text-secondary);
     text-decoration: none;
     white-space: nowrap;
-    border: 1px solid transparent;
-    border-bottom: none;
-    border-radius: var(--radius-md) var(--radius-md) 0 0;
-    /* Sits on the header's bottom border so the active tab merges with the page */
-    margin-bottom: -1px;
+    border-bottom: 3px solid transparent;
     transition:
       color 0.15s ease,
-      background-color 0.15s ease;
+      border-color 0.15s ease;
   }
 
   .tab:hover:not(.active) {
     color: var(--color-text-primary);
-    background-color: var(--color-bg-secondary);
+    border-bottom-color: var(--color-border);
   }
 
   .tab.active {
     color: var(--color-primary);
-    background-color: var(--color-bg-secondary);
-    border-color: var(--color-border);
-    box-shadow: inset 0 3px 0 var(--color-primary);
+    border-bottom-color: var(--color-primary);
+  }
+
+  .tab-icon {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+
+  /* Anchors the count to the icon so it reads as a badge on the cart */
+  .tab-icon-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
   }
 
   /* Count chip — always rendered, muted at zero */
@@ -366,7 +416,8 @@
     padding: 0 0.4rem;
     border-radius: 999px;
     background-color: var(--color-primary);
-    color: #fff;
+    /* Dark on orange is 7.0:1; white was 2.58:1, under the 4.5 minimum */
+    color: var(--color-bg-primary);
     font-size: 0.78rem;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
@@ -384,13 +435,13 @@
     }
 
     .header-content {
-      padding: var(--space-md) var(--space-md) var(--space-sm);
-      gap: var(--space-md);
+      padding: var(--space-sm) var(--space-md) var(--space-xs);
+      gap: var(--space-sm);
     }
 
     .household-avatar {
-      width: 3.5rem;
-      height: 3.5rem;
+      width: 2.5rem;
+      height: 2.5rem;
       border-width: 2px;
     }
 
@@ -399,11 +450,22 @@
     }
 
     .header-info h1 {
-      font-size: 1.35rem;
+      font-size: 1.1rem;
     }
 
     .header-info p {
-      font-size: 0.85rem;
+      font-size: 0.78rem;
+    }
+
+    .invite-link {
+      min-height: 28px;
+      padding: 0 var(--space-sm);
+      font-size: 0.75rem;
+    }
+
+    .settings-btn {
+      width: 32px;
+      height: 32px;
     }
 
     .header-actions.has-cta {
@@ -414,17 +476,81 @@
       flex: 1;
     }
 
+    /* Edge to edge, no side gaps: the tabs read as one squared-off control
+       rather than links floating in the header. */
+    /* Fixed to the bottom, native-app style, so navigation is in thumb reach.
+       The height is published as --tabbar-height so the floating action bars
+       can stack above it and the page can pad its bottom. */
     .tabs {
-      padding: 0 var(--space-sm);
-      gap: 2px;
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      top: auto;
+      z-index: 70;
+      padding: 0;
+      padding-bottom: env(safe-area-inset-bottom);
+      gap: 0;
+      /* The page ground, not the card colour, so the bar reads as part of the
+         page rather than a floating panel */
+      background-color: var(--color-bg-secondary);
+      border-top: 1px solid var(--color-border);
+      /* Lifts it off the content it covers */
+      box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.25);
     }
 
-    /* Split the width evenly so both tabs are full-size touch targets */
+    /* Classic mobile app style: large icon with a small label beneath it */
     .tab {
       flex: 1;
+      flex-direction: column;
       justify-content: center;
-      padding: var(--space-md) var(--space-sm);
-      font-size: 0.98rem;
+      gap: 2px;
+      /* Indicator moves to the top edge: on a bottom bar an underline sits
+         against the screen edge and reads as a stray line. */
+      border-bottom: none;
+      border-top: 3px solid transparent;
+      /* Extra top padding so the badge, which overhangs the icon, is not
+         clipped by the tab's own bounds */
+      padding: var(--space-sm) var(--space-xs) var(--space-xs);
+      min-height: 56px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      /* Squared off, separated by a hairline instead of a gap */
+      border-right: 1px solid var(--color-border);
+    }
+
+    .tab-icon {
+      width: 24px;
+      height: 24px;
+    }
+
+    .tab-label {
+      line-height: 1.1;
+    }
+
+    .tab:hover:not(.active) {
+      border-bottom-color: transparent;
+      border-top-color: var(--color-border);
+    }
+
+    .tab.active {
+      border-bottom-color: transparent;
+      border-top-color: var(--color-primary);
+    }
+
+    /* Overlaps the icon as a badge, since a label sits below it now */
+    .tab-count {
+      position: absolute;
+      top: -5px;
+      left: 12px;
+      min-width: 1.05rem;
+      height: 1.05rem;
+      padding: 0 0.25rem;
+      font-size: 0.65rem;
+    }
+
+    .tab:last-child {
+      border-right: none;
     }
   }
 </style>
