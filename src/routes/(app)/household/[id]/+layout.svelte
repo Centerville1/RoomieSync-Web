@@ -67,13 +67,13 @@
           <span>{data.members.length} {data.members.length === 1 ? 'member' : 'members'}</span>
           {#if data.userRole === 'admin' && !isNewHousehold}
             <button type="button" class="invite-link" onclick={() => (showInviteModal = true)}>
-              + Invite
+              + Invite Members
             </button>
           {/if}
         </p>
       </div>
       {#if data.userRole === 'admin'}
-        <div class="header-actions">
+        <div class="header-actions" class:has-cta={isNewHousehold}>
           {#if isNewHousehold}
             <Button variant="primary" size="lg" on:click={() => (showInviteModal = true)}
               >Invite Members</Button
@@ -238,16 +238,21 @@
     flex-wrap: wrap;
   }
 
-  /* Small once the household is established: still reachable, no longer a CTA */
+  /* Small once the household is established: still reachable, no longer a CTA.
+     Sized for a comfortable tap without competing with Split the Cost. */
   .invite-link {
-    padding: 2px var(--space-sm);
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 0 var(--space-md);
     border: 1px solid var(--color-border);
     border-radius: 999px;
     background: none;
     color: var(--color-text-secondary);
     font-family: inherit;
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     font-weight: 600;
+    white-space: nowrap;
     cursor: pointer;
   }
 
@@ -382,7 +387,7 @@
       font-size: 0.85rem;
     }
 
-    .header-actions {
+    .header-actions.has-cta {
       width: 100%;
     }
 
