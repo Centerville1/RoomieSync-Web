@@ -371,7 +371,11 @@
 {/if}
 
 <!-- Split the Cost Modal -->
-<SplitCostModal bind:open={showSplitCostModal} members={otherMembers} />
+<SplitCostModal
+  bind:open={showSplitCostModal}
+  members={otherMembers}
+  currentUserId={data.currentUserId}
+/>
 
 <!-- Pay Expenses Modal -->
 <PayExpensesModal

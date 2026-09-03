@@ -16,6 +16,7 @@ import { sendEmail } from '$lib/server/email';
 import { getHouseholdInviteEmail, getNudgeReminderEmail } from '$lib/server/email/templates';
 import { createInviteSignature } from '$lib/server/invite-signature';
 import { requireAdmin } from '$lib/server/household';
+import { calculateSplits, splitsMatchTotal } from '$lib/server/splits';
 
 const PAGE_SIZE = 20;
 
@@ -468,9 +469,54 @@ export const actions: Actions = {
     }
     // Note: splitWith can be empty - creator is always included in the split
 
+    const currentUserId = locals.user.id;
+
+    // Everyone the expense is divided between, creator included
+    const allSplitUsers = [...new Set([currentUserId, ...splitWith])];
+
+    // Per-person amounts posted by the split editor. Only the overridden ones
+    // are trusted as intent: the rest are recalculated here so the stored
+    // shares always sum to the expense, whatever the client sent.
+    const postedIds = formData.getAll('splitUserIds') as string[];
+    const postedAmounts = formData.getAll('splitAmounts') as string[];
+    const posted = new Map<string, number>();
+    postedIds.forEach((id, i) => {
+      const value = parseFloat(postedAmounts[i]);
+      if (Number.isFinite(value) && value >= 0) posted.set(id, value);
+    });
+
+    // An amount counts as an override only if it differs from the even share,
+    // so an untouched form still divides evenly after any rounding.
+    const evenShare = amount / allSplitUsers.length;
+    const splitAmounts = calculateSplits(
+      amount,
+      allSplitUsers.map((userId) => {
+        const p = posted.get(userId);
+        const isOverride = p !== undefined && Math.abs(p - evenShare) > 0.005;
+        return { userId, override: isOverride ? p : undefined };
+      }),
+      currentUserId
+    );
+
+    // Validate before writing anything. calculateSplits honours overrides as
+    // given, so a client that pins every share could otherwise leave part of
+    // the expense unaccounted for, and an early return after the expense row
+    // was inserted would leave it orphaned with no splits.
+    if (
+      !splitsMatchTotal(
+        amount,
+        splitAmounts.map((sp) => sp.amount)
+      )
+    ) {
+      return fail(400, {
+        error: 'The split amounts must add up to the expense total'
+      });
+    }
+
+    const amountByUser = new Map(splitAmounts.map((sp) => [sp.userId, sp.amount]));
+
     // Create expense
     const expenseId = generateId();
-    const currentUserId = locals.user.id;
     await db.insert(expenses).values({
       id: expenseId,
       householdId,
@@ -482,14 +528,11 @@ export const actions: Actions = {
       updatedAt: new Date()
     });
 
-    // Create expense splits for selected members + creator
-    // Include the creator in the splits (marked as already paid)
-    const allSplitUsers = [...new Set([currentUserId, ...splitWith])];
-
     const splits = allSplitUsers.map((userId) => ({
       id: generateId(),
       expenseId,
       userId,
+      amount: amountByUser.get(userId) ?? 0,
       hasPaid: userId === currentUserId, // Creator has already paid
       paidAt: userId === currentUserId ? new Date() : null
     }));

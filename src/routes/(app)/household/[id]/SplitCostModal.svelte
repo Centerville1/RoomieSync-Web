@@ -1,27 +1,33 @@
 <script lang="ts">
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
-  import Input from '$lib/components/Input.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
-  import MemberSelect from '$lib/components/MemberSelect.svelte';
+  import SplitEditor from '$lib/components/SplitEditor.svelte';
+  import AmountInput from '$lib/components/AmountInput.svelte';
   import { enhance } from '$app/forms';
 
   let {
     open = $bindable(false),
-    members = []
+    members = [],
+    currentUserId
   }: {
     open: boolean;
     members: Array<{ id: string; name: string; displayName: string | null }>;
+    currentUserId: string;
   } = $props();
 
   let selectedMembers = $state<string[]>([]);
+  let overrides = $state<Record<string, number>>({});
+  let amount = $state(0);
   let isOptional = $state(false);
 
   function handleClose() {
     open = false;
     isOptional = false;
     selectedMembers = [];
+    overrides = {};
+    amount = 0;
   }
 </script>
 
@@ -39,13 +45,11 @@
       id="expense-form"
     >
       <div class="form-group">
-        <Input
-          type="number"
+        <AmountInput
+          bind:value={amount}
           name="amount"
+          id="expense-amount"
           label="Amount"
-          placeholder="0.00"
-          step="0.01"
-          min="0.01"
           required
         />
       </div>
@@ -61,7 +65,13 @@
       </div>
 
       {#if members.length > 0}
-        <MemberSelect {members} bind:selectedMembers />
+        <SplitEditor
+          {members}
+          bind:selectedMembers
+          bind:overrides
+          total={amount}
+          payerId={currentUserId}
+        />
       {:else}
         <p class="solo-notice">
           You're the only member. This expense will be tracked for your records.

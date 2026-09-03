@@ -104,8 +104,6 @@
     <p class="hint error">{error}</p>
   {:else if showPreview && focused && isExpression && evaluated !== null}
     <p class="hint">= {formatAmount(evaluated)}</p>
-  {:else if showPreview && !focused}
-    <p class="hint muted">Maths works too, like 10 + 0.2*10</p>
   {/if}
 </div>
 
@@ -170,10 +168,6 @@
     font-size: 0.78rem;
     color: var(--color-text-secondary);
     min-height: 1rem;
-  }
-
-  .hint.muted {
-    color: var(--color-text-tertiary);
   }
 
   .hint.error {
