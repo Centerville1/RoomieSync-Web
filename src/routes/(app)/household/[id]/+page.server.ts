@@ -84,13 +84,20 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
     }
   }
 
-  // Query: What others owe the current user (unpaid splits on current user's expenses)
+  // Query: What others owe the current user (unpaid splits on current user's
+  // expenses). Summed in SQL from the stored per-split amounts, so uneven
+  // splits are respected and only one row per debtor crosses the wire.
+  //
+  // COALESCE covers any split written before per-split amounts existed: those
+  // fall back to an even share of the expense.
   const owedToCurrentUser = await db
     .select({
       odebtor: expenseSplits.userId,
-      amount: expenses.amount,
       isOptional: expenses.isOptional,
-      splitCount: sql<number>`(SELECT COUNT(*) FROM expense_splits WHERE expense_id = ${expenses.id})`
+      total: sql<number>`SUM(COALESCE(
+        ${expenseSplits.amount},
+        ${expenses.amount} / (SELECT COUNT(*) FROM expense_splits WHERE expense_id = ${expenses.id})
+      ))`
     })
     .from(expenses)
     .innerJoin(expenseSplits, eq(expenses.id, expenseSplits.expenseId))
@@ -101,27 +108,29 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
         eq(expenseSplits.hasPaid, false),
         sql`${expenseSplits.userId} != ${currentUserId}`
       )
-    );
+    )
+    .groupBy(expenseSplits.userId, expenses.isOptional);
 
   for (const row of owedToCurrentUser) {
     const odebtor = row.odebtor;
     if (memberBalances[odebtor]) {
-      const share = row.amount / row.splitCount;
       if (row.isOptional) {
-        memberBalances[odebtor].owesYouOptional += share;
+        memberBalances[odebtor].owesYouOptional += row.total;
       } else {
-        memberBalances[odebtor].owesYou += share;
+        memberBalances[odebtor].owesYou += row.total;
       }
     }
   }
 
-  // Query: What current user owes others (unpaid splits where current user hasn't paid)
+  // Query: What the current user owes others, summed the same way
   const owedByCurrentUser = await db
     .select({
       creditor: expenses.creatorId,
-      amount: expenses.amount,
       isOptional: expenses.isOptional,
-      splitCount: sql<number>`(SELECT COUNT(*) FROM expense_splits WHERE expense_id = ${expenses.id})`
+      total: sql<number>`SUM(COALESCE(
+        ${expenseSplits.amount},
+        ${expenses.amount} / (SELECT COUNT(*) FROM expense_splits WHERE expense_id = ${expenses.id})
+      ))`
     })
     .from(expenses)
     .innerJoin(expenseSplits, eq(expenses.id, expenseSplits.expenseId))
@@ -132,16 +141,16 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
         eq(expenseSplits.hasPaid, false),
         sql`${expenses.creatorId} != ${currentUserId}`
       )
-    );
+    )
+    .groupBy(expenses.creatorId, expenses.isOptional);
 
   for (const row of owedByCurrentUser) {
     const creditor = row.creditor;
     if (memberBalances[creditor]) {
-      const share = row.amount / row.splitCount;
       if (row.isOptional) {
-        memberBalances[creditor].youOweOptional += share;
+        memberBalances[creditor].youOweOptional += row.total;
       } else {
-        memberBalances[creditor].youOwe += share;
+        memberBalances[creditor].youOwe += row.total;
       }
     }
   }
