@@ -384,10 +384,14 @@
     justify-content: space-between;
     align-items: center;
     gap: var(--space-md);
+    flex-wrap: wrap;
   }
 
   .invite-details {
     flex: 1;
+    /* Without this the long email sets a minimum width the flex item cannot
+       shrink below, so the row overflowed and scrolled the page sideways. */
+    min-width: 0;
   }
 
   .invite-email {
@@ -395,6 +399,8 @@
     font-size: 0.875rem;
     font-weight: 500;
     color: var(--color-text-primary);
+    /* Emails have no spaces to break on */
+    overflow-wrap: anywhere;
   }
 
   .invite-date {
@@ -406,5 +412,19 @@
   .invite-actions {
     display: flex;
     gap: var(--space-xs);
+    flex-shrink: 0;
+  }
+
+  @media (max-width: 480px) {
+    /* Actions drop below the address rather than competing with it for width */
+    .pending-invite-card {
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--space-sm);
+    }
+
+    .invite-actions {
+      justify-content: flex-end;
+    }
   }
 </style>
