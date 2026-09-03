@@ -28,7 +28,9 @@
    * side gutters a pinned label needs.
    */
   .app-footer {
-    padding: var(--space-lg) var(--space-md) var(--space-md);
+    /* Bottom padding clears the fixed mobile tab bar, which would otherwise
+       cover the footer entirely. --tabbar-height is 0 where there is no bar. */
+    padding: var(--space-lg) var(--space-md) calc(var(--space-md) + var(--tabbar-height, 0px));
     font-size: 0.75rem;
     color: var(--color-text-tertiary);
     text-align: center;

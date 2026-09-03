@@ -812,7 +812,9 @@
     position: fixed;
     left: 0;
     right: 0;
-    bottom: 0;
+    /* Sits above the mobile tab bar; --tabbar-height is 0 on desktop, where
+       the tabs are at the top. */
+    bottom: var(--tabbar-height, 0px);
     z-index: 50;
     display: flex;
     align-items: center;
@@ -859,7 +861,9 @@
   @media (max-width: 767px) {
     /* Table goes edge to edge; text content keeps its own inset below */
     main {
-      padding: var(--space-lg) 0 6rem;
+      /* Room for the bulk bar, which sits directly on top of the tab bar
+         whenever items are selected. The footer handles clearing the bar. */
+      padding: var(--space-lg) 0 4rem;
     }
 
     .page-header,

@@ -687,6 +687,8 @@
       left: var(--space-md);
       right: var(--space-md);
       transform: none;
+      /* Stacks above the fixed tab bar rather than under it */
+      bottom: calc(var(--tabbar-height, 56px) + var(--space-sm) + env(safe-area-inset-bottom));
     }
 
     .pay-selected-bar :global(.btn) {
@@ -730,6 +732,9 @@
        and sticky header filled the viewport before Split the Cost came into
        reach, so everything above the grid gets tighter type and spacing. */
     main {
+      /* Just enough to clear the fixed tab bar. The Pay Selected pill floats
+         over the content only while rows are selected, so reserving room for
+         it permanently left a large empty gap. */
       padding: var(--space-sm) var(--space-sm) var(--space-sm);
     }
 
