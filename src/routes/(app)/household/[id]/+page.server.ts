@@ -15,6 +15,7 @@ import { generateId } from '$lib/server/utils';
 import { sendEmail } from '$lib/server/email';
 import { getHouseholdInviteEmail, getNudgeReminderEmail } from '$lib/server/email/templates';
 import { createInviteSignature } from '$lib/server/invite-signature';
+import { requireAdmin } from '$lib/server/household';
 
 const PAGE_SIZE = 20;
 
@@ -1457,6 +1458,33 @@ export const actions: Actions = {
     await db
       .update(households)
       .set({ name, updatedAt: new Date() })
+      .where(eq(households.id, householdId));
+
+    return { success: true };
+  },
+
+  /**
+   * Archive or restore the household.
+   *
+   * A softer option than deletion, which was previously the only way for an
+   * admin to retire a household. Archiving only moves it out of the homepage's
+   * main list: expenses, shopping and every action keep working, and any admin
+   * can restore it.
+   */
+  setArchived: async ({ request, locals, params }) => {
+    const householdId = params.id;
+    const { user } = await requireAdmin(locals, householdId, 'archive the household');
+
+    const formData = await request.formData();
+    const archived = formData.get('archived') === 'true';
+
+    await db
+      .update(households)
+      .set({
+        archivedAt: archived ? new Date() : null,
+        archivedBy: archived ? user.id : null,
+        updatedAt: new Date()
+      })
       .where(eq(households.id, householdId));
 
     return { success: true };

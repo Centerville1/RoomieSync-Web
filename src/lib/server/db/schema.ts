@@ -33,6 +33,10 @@ export const households = sqliteTable('households', {
   bannerUrl: text('banner_url'),
   primaryColor: text('primary_color'),
   secondaryColor: text('secondary_color'),
+  // Archived households drop out of the main list on the homepage but stay
+  // fully usable. NULL means active, so state and timestamp cannot disagree.
+  archivedAt: integer('archived_at', { mode: 'timestamp' }),
+  archivedBy: text('archived_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
 });

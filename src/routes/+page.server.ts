@@ -7,7 +7,7 @@ import { generateId } from '$lib/server/utils';
 
 export const load: PageServerLoad = async ({ locals }) => {
   if (!locals.user) {
-    return { households: [], pendingInvites: [] };
+    return { households: [], archivedHouseholds: [], pendingInvites: [] };
   }
 
   // Fetch user's households
@@ -20,6 +20,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       primaryColor: households.primaryColor,
       secondaryColor: households.secondaryColor,
       createdAt: households.createdAt,
+      archivedAt: households.archivedAt,
       role: householdMembers.role
     })
     .from(households)
@@ -39,8 +40,11 @@ export const load: PageServerLoad = async ({ locals }) => {
     .innerJoin(households, eq(invites.householdId, households.id))
     .where(and(eq(invites.invitedEmail, locals.user.email), eq(invites.used, false)));
 
+  // Archived households are split out rather than filtered away: members keep
+  // access to the history, they just move out of the main list.
   return {
-    households: userHouseholds,
+    households: userHouseholds.filter((h) => h.archivedAt === null),
+    archivedHouseholds: userHouseholds.filter((h) => h.archivedAt !== null),
     pendingInvites
   };
 };

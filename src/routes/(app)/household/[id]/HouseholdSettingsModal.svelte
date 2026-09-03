@@ -18,12 +18,15 @@
     open = $bindable(false),
     householdName = '',
     householdId = '',
+    isArchived = false,
     members = [],
     currentUserId = ''
   }: {
     open: boolean;
     householdName: string;
     householdId: string;
+    /** Drives the archive/restore toggle */
+    isArchived?: boolean;
     members: Member[];
     currentUserId: string;
   } = $props();
@@ -218,6 +221,38 @@
             </div>
           {/each}
         </div>
+      </section>
+
+      <!-- Archive: the reversible alternative to deletion -->
+      <section class="settings-section">
+        <h3>{isArchived ? 'Archived' : 'Archive Household'}</h3>
+        <p class="archive-description">
+          {isArchived
+            ? 'This household is out of the main list on everyone’s home page. Restoring puts it back.'
+            : 'Moves this household into an Archived section on every member’s home page. Nothing is deleted and everything keeps working, so you can restore it at any time.'}
+        </p>
+        <form
+          method="POST"
+          action="{actionBase}?/setArchived"
+          use:enhance={() => {
+            isSubmitting = true;
+            return async ({ result }) => {
+              if (result.type !== 'redirect') await invalidateAll();
+              await applyAction(result);
+              isSubmitting = false;
+            };
+          }}
+        >
+          <input type="hidden" name="archived" value={isArchived ? 'false' : 'true'} />
+          <Button
+            type="submit"
+            variant={isArchived ? 'primary' : 'outline'}
+            size="sm"
+            disabled={isSubmitting}
+          >
+            {isArchived ? 'Restore Household' : 'Archive Household'}
+          </Button>
+        </form>
       </section>
 
       <!-- Danger Zone -->
@@ -422,6 +457,13 @@
     margin: 0 0 var(--space-sm) 0;
     font-size: 0.8rem;
     color: var(--color-error, #ef4444);
+    line-height: 1.5;
+  }
+
+  .archive-description {
+    margin: 0 0 var(--space-md);
+    color: var(--color-text-secondary);
+    font-size: 0.9rem;
     line-height: 1.5;
   }
 

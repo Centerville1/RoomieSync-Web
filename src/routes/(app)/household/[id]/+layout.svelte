@@ -25,6 +25,18 @@
 <div class="household-container">
   <Header user={{ name: data.userName }} showBackButton />
 
+  {#if data.household.archivedAt}
+    <div class="archived-banner" role="status">
+      <strong>This household is archived.</strong>
+      <span>
+        It has moved out of your main list on the home page. Everything still works.{data.userRole ===
+        'admin'
+          ? ' You can restore it in household settings.'
+          : ''}
+      </span>
+    </div>
+  {/if}
+
   <!-- Household Header -->
   <header class="household-header">
     {#if data.household.bannerUrl}
@@ -106,6 +118,7 @@
     bind:open={showSettingsModal}
     householdName={data.household.name}
     householdId={data.household.id}
+    isArchived={data.household.archivedAt !== null}
     members={data.members}
     currentUserId={data.currentUserId}
   />
@@ -115,6 +128,23 @@
   .household-container {
     min-height: 100vh;
     background-color: var(--color-bg-secondary);
+  }
+
+  /* Sits above the header so it is the first thing read on any tab */
+  .archived-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-xs) var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    background-color: color-mix(in srgb, var(--color-warning) 16%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
+    color: var(--color-text-primary);
+    font-size: 0.9rem;
+  }
+
+  .archived-banner span {
+    color: var(--color-text-secondary);
   }
 
   .household-header {

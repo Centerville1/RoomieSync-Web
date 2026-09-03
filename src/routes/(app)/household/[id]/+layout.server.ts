@@ -73,6 +73,8 @@ export const load: LayoutServerLoad = async ({ locals, params }) => {
     );
 
   return {
+    // household carries archivedAt/archivedBy, so the banner is available on
+    // every tab without another query
     household: householdData[0].household,
     pendingInvites,
     openShoppingItems: openItemsResult[0]?.count ?? 0,
