@@ -111,11 +111,6 @@
   // client-side navigation between two children of the same layout: the page may
   // already be mounted, and onMount would never fire.
   //
-  // Reads only the param, not the whole url, and latches once consumed. The
-  // effect calls replaceState, which mutates page.url, so tracking the url
-  // itself would mean writing to the source it depends on. The latch also stops
-  // a dismissed modal springing back open if the param reappears via Back or a
-  // shared link.
   // A latch, not a URL rewrite. Stripping the param with replaceState looked
   // like the tidy option but bought nothing: replaceState updates page.state and
   // the address bar without ever reassigning page.url, so the param stayed
@@ -164,17 +159,27 @@
     hasMoreExpenses = data.hasMoreExpenses;
   });
 
+  // Every expense the user owes on, from the server rather than the paginated
+  // list, so "Pay All Expenses" cannot miss ones on later pages.
   const allSelectableExpenseIds = $derived(
     new Set(
-      allExpenses
+      data.unpaidExpenses
         .filter((e) => {
-          if (e.creatorId === data.currentUserId) return false;
           const mySplit = e.splits.find((s) => s.userId === data.currentUserId);
           return mySplit !== undefined && !mySplit.hasPaid;
         })
         .map((e) => e.id)
     )
   );
+
+  // The pay modal resolves each selected id against this array, so it must hold
+  // the unpaid expenses even when they are not on the loaded page. Loaded rows
+  // win, since they carry the creator object the grid renders.
+  const payableExpenses = $derived.by(() => {
+    const byId = new Map(data.unpaidExpenses.map((e) => [e.id, e]));
+    for (const e of allExpenses) byId.set(e.id, e);
+    return [...byId.values()];
+  });
 
   async function loadMoreExpenses() {
     const response = await fetch(
@@ -322,7 +327,7 @@
 <PayExpensesModal
   bind:open={showPayExpensesModal}
   {selectedExpenseIds}
-  expenses={allExpenses}
+  expenses={payableExpenses}
   reverseExpenses={data.reverseExpenses}
   members={data.members}
   currentUserId={data.currentUserId}
