@@ -11,6 +11,19 @@
   let showInviteModal = $state(false);
   let showSettingsModal = $state(false);
 
+  // Measured so the sticky header can offset the banner out of view exactly,
+  // rather than hardcoding a height that changes with the breakpoint.
+  let bannerHeight = $state(0);
+
+  // Nobody else here yet and nothing pending: inviting is the only useful thing
+  // an admin can do, so it earns a full CTA. After that it shrinks to a link
+  // beside the member count.
+  const isNewHousehold = $derived(
+    data.members.length <= 1 && (data.pendingInvites?.length ?? 0) === 0
+  );
+
+  const pendingCount = $derived(data.pendingInvites?.length ?? 0);
+
   const basePath = $derived(`/household/${data.household.id}`);
   const currentPath = $derived(page.url.pathname);
 
@@ -25,10 +38,26 @@
 <div class="household-container">
   <Header user={{ name: data.userName }} showBackButton />
 
+  {#if data.household.archivedAt}
+    <div class="archived-banner" role="status">
+      <strong>This household is archived.</strong>
+      <span>
+        It has moved out of your main list on the home page. Everything still works.{data.userRole ===
+        'admin'
+          ? ' You can restore it in household settings.'
+          : ''}
+      </span>
+    </div>
+  {/if}
+
   <!-- Household Header -->
-  <header class="household-header">
+  <header class="household-header" style="--banner-height: {bannerHeight}px">
     {#if data.household.bannerUrl}
-      <div class="banner" style="background-image: url({data.household.bannerUrl})"></div>
+      <div
+        class="banner"
+        style="background-image: url({data.household.bannerUrl})"
+        bind:clientHeight={bannerHeight}
+      ></div>
     {/if}
     <div class="header-content container">
       {#if data.household.imageUrl}
@@ -36,13 +65,27 @@
       {/if}
       <div class="header-info">
         <h1>{data.household.name}</h1>
-        <p>{data.members.length} {data.members.length === 1 ? 'member' : 'members'}</p>
+        <p class="member-line">
+          <span>{data.members.length} {data.members.length === 1 ? 'member' : 'members'}</span>
+          {#if data.userRole === 'admin' && !isNewHousehold}
+            <button type="button" class="invite-link" onclick={() => (showInviteModal = true)}>
+              + Invite Members
+              {#if pendingCount > 0}
+                <span class="pending-badge">
+                  {pendingCount} pending
+                </span>
+              {/if}
+            </button>
+          {/if}
+        </p>
       </div>
       {#if data.userRole === 'admin'}
-        <div class="header-actions">
-          <Button variant="secondary" size="lg" on:click={() => (showInviteModal = true)}
-            >Invite Members</Button
-          >
+        <div class="header-actions" class:has-cta={isNewHousehold}>
+          {#if isNewHousehold}
+            <Button variant="primary" size="lg" on:click={() => (showInviteModal = true)}
+              >Invite Members</Button
+            >
+          {/if}
           <button
             type="button"
             class="settings-btn"
@@ -99,6 +142,7 @@
     bind:open={showInviteModal}
     pendingInvites={data.pendingInvites}
     householdId={data.household.id}
+    suggestions={data.inviteSuggestions}
     {form}
   />
 
@@ -106,6 +150,7 @@
     bind:open={showSettingsModal}
     householdName={data.household.name}
     householdId={data.household.id}
+    isArchived={data.household.archivedAt !== null}
     members={data.members}
     currentUserId={data.currentUserId}
   />
@@ -117,10 +162,39 @@
     background-color: var(--color-bg-secondary);
   }
 
+  /* Sits above the header so it is the first thing read on any tab */
+  .archived-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-xs) var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    background-color: color-mix(in srgb, var(--color-warning) 16%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
+    color: var(--color-text-primary);
+    font-size: 0.9rem;
+  }
+
+  .archived-banner span {
+    color: var(--color-text-secondary);
+  }
+
   .household-header {
     background-color: var(--color-bg-primary);
     border-bottom: 1px solid var(--color-border);
-    position: relative;
+  }
+
+  /* The header sticks as a whole: a sticky child cannot escape its parent, and
+     this header is only as tall as its content, so sticking .header-content
+     alone did nothing once the header scrolled past.
+     The banner is allowed to scroll out of view by offsetting upward by its own
+     height, which keeps the name, member count and tabs pinned without the
+     banner eating a phone screen. --navbar-height is measured by Header.svelte
+     so the offset cannot drift. */
+  .household-header {
+    position: sticky;
+    top: calc(var(--navbar-height, 5.5rem) - var(--banner-height, 0px));
+    z-index: 40;
   }
 
   .banner {
@@ -162,6 +236,48 @@
   .header-info p {
     margin: 0;
     color: var(--color-text-secondary);
+  }
+
+  .member-line {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+  }
+
+  /* Small once the household is established: still reachable, no longer a CTA.
+     Sized for a comfortable tap without competing with Split the Cost. */
+  .invite-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 0 var(--space-md);
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: none;
+    color: var(--color-text-secondary);
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .invite-link:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+
+  /* Outstanding invites are worth surfacing without opening the modal */
+  .pending-badge {
+    margin-left: var(--space-xs);
+    padding: 1px 0.4rem;
+    border-radius: 999px;
+    background-color: color-mix(in srgb, var(--color-warning) 22%, transparent);
+    color: var(--color-warning);
+    font-size: 0.72rem;
+    font-weight: 700;
+    white-space: nowrap;
   }
 
   .header-actions {
@@ -290,7 +406,7 @@
       font-size: 0.85rem;
     }
 
-    .header-actions {
+    .header-actions.has-cta {
       width: 100%;
     }
 

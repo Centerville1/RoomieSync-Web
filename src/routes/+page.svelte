@@ -11,6 +11,7 @@
   let showCreateModal = $state(false);
   let householdName = $state('');
   let isSubmitting = $state(false);
+  let showArchived = $state(false);
 
   function handleCreateClick() {
     showCreateModal = true;
@@ -152,6 +153,43 @@
         <Card padding="lg">
           <p class="placeholder">Your households will appear here.</p>
         </Card>
+      {/if}
+
+      <!-- Archived households: out of the main list but still reachable, so
+           members keep access to past expenses. -->
+      {#if data.archivedHouseholds && data.archivedHouseholds.length > 0}
+        <section class="archived-section">
+          <button
+            type="button"
+            class="archived-toggle"
+            onclick={() => (showArchived = !showArchived)}
+            aria-expanded={showArchived}
+          >
+            <span class="caret" class:open={showArchived}>▸</span>
+            Archived
+            <span class="archived-count">{data.archivedHouseholds.length}</span>
+          </button>
+
+          {#if showArchived}
+            <div class="archived-list">
+              {#each data.archivedHouseholds as household}
+                <a href="/household/{household.id}" class="archived-card-link">
+                  <div class="archived-card">
+                    {#if household.imageUrl}
+                      <img src={household.imageUrl} alt={household.name} class="archived-image" />
+                    {/if}
+                    <div class="archived-info">
+                      <h3>{household.name}</h3>
+                      <p class="archived-meta">
+                        {household.role === 'admin' ? 'Admin' : 'Member'} · Archived
+                      </p>
+                    </div>
+                  </div>
+                </a>
+              {/each}
+            </div>
+          {/if}
+        </section>
       {/if}
     {:else}
       <section class="hero">
@@ -364,6 +402,104 @@
   .household-card-link {
     text-decoration: none;
     color: inherit;
+  }
+
+  /* Archived: visually quieter than the active grid so it reads as secondary,
+     but still a real link into the household. */
+  .archived-section {
+    margin-top: var(--space-xl);
+  }
+
+  .archived-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    width: 100%;
+    min-height: 48px;
+    padding: 0 var(--space-md);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-secondary);
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .archived-toggle:hover {
+    color: var(--color-text-primary);
+    border-color: var(--color-text-tertiary);
+  }
+
+  .caret {
+    display: inline-block;
+    font-size: 0.8rem;
+    transition: transform 0.15s ease;
+  }
+
+  .caret.open {
+    transform: rotate(90deg);
+  }
+
+  .archived-count {
+    margin-left: auto;
+    padding: 1px 0.5rem;
+    border-radius: 999px;
+    background-color: var(--color-bg-tertiary);
+    color: var(--color-text-tertiary);
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .archived-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    margin-top: var(--space-xs);
+  }
+
+  .archived-card-link {
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .archived-card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    min-height: 64px;
+    padding: var(--space-sm) var(--space-md);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-primary);
+    transition: border-color 0.15s ease;
+  }
+
+  .archived-card:hover {
+    border-color: var(--color-text-tertiary);
+  }
+
+  .archived-image {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+    /* Muted so archived rows do not compete with the active grid */
+    filter: grayscale(0.6);
+    opacity: 0.8;
+  }
+
+  .archived-info h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--color-text-secondary);
+  }
+
+  .archived-meta {
+    margin: 0;
+    font-size: 0.82rem;
+    color: var(--color-text-tertiary);
   }
 
   .household-card {

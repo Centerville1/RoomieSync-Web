@@ -9,9 +9,19 @@
   }
 
   let { user = null, showBackButton = false, backHref = '/', backLabel = 'Back' }: Props = $props();
+
+  // Measured rather than hardcoded, so sticky elements below the navbar keep the
+  // right offset if its contents change.
+  let navHeight = $state(0);
+
+  $effect(() => {
+    if (navHeight > 0) {
+      document.documentElement.style.setProperty('--navbar-height', `${navHeight}px`);
+    }
+  });
 </script>
 
-<nav class="navbar">
+<nav class="navbar" bind:clientHeight={navHeight}>
   <div class="container">
     <div class="nav-left">
       <a href="/" class="logo-container">

@@ -1,20 +1,24 @@
 <script lang="ts">
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
-  import Input from '$lib/components/Input.svelte';
   import Card from '$lib/components/Card.svelte';
   import { enhance, applyAction } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
+
+  type Suggestion = { id: string; name: string; email: string };
 
   let {
     open = $bindable(false),
     pendingInvites = [],
     householdId,
+    suggestions = [],
     form
   }: {
     open: boolean;
     pendingInvites: Array<{ id: string; invitedEmail: string; createdAt: Date }>;
     householdId: string;
+    /** People from the admin's other households, already filtered server-side */
+    suggestions?: Suggestion[];
     form?: { error?: string; emailFailed?: boolean; emailSent?: boolean; resent?: boolean } | null;
   } = $props();
 
@@ -23,6 +27,36 @@
   const actionBase = $derived(`/household/${householdId}`);
 
   let inviteEmail = $state('');
+  let showSuggestions = $state(false);
+
+  // Matches on name or email, anywhere in the string, so "tim" and "gmail"
+  // both narrow the list. Prefix matches rank first.
+  const matches = $derived.by(() => {
+    const q = inviteEmail.trim().toLowerCase();
+    const ranked = suggestions
+      .map((s) => {
+        const name = s.name.toLowerCase();
+        const email = s.email.toLowerCase();
+        if (q.length === 0) return { s, at: 0 };
+        const at = Math.min(
+          name.includes(q) ? name.indexOf(q) : Infinity,
+          email.includes(q) ? email.indexOf(q) : Infinity
+        );
+        return { s, at };
+      })
+      .filter(({ s, at }) => at !== Infinity && s.email.toLowerCase() !== q);
+    return ranked
+      .sort(
+        (a, b) => (a.at === 0 ? 0 : 1) - (b.at === 0 ? 0 : 1) || a.s.name.localeCompare(b.s.name)
+      )
+      .slice(0, 6)
+      .map(({ s }) => s);
+  });
+
+  function pick(s: Suggestion) {
+    inviteEmail = s.email;
+    showSuggestions = false;
+  }
   let resendingId = $state<string | null>(null);
   let resendSuccess = $state<string | null>(null);
   let resendError = $state<string | null>(null);
@@ -30,6 +64,7 @@
   function handleClose() {
     open = false;
     inviteEmail = '';
+    showSuggestions = false;
     resendSuccess = null;
     resendError = null;
   }
@@ -64,17 +99,42 @@
       id="invite-form"
     >
       <div class="form-group">
-        <Input
-          type="email"
-          name="email"
-          label="Email Address"
-          bind:value={inviteEmail}
-          placeholder="roommate@example.com"
-          required
-        />
+        <label for="invite-email" class="field-label">Email Address<span class="req">*</span></label
+        >
+        <div class="email-field">
+          <input
+            id="invite-email"
+            type="email"
+            name="email"
+            bind:value={inviteEmail}
+            placeholder="roommate@example.com"
+            required
+            autocomplete="off"
+            onfocus={() => (showSuggestions = true)}
+            oninput={() => (showSuggestions = true)}
+            onblur={() => setTimeout(() => (showSuggestions = false), 150)}
+          />
+          {#if showSuggestions && matches.length > 0}
+            <ul class="suggestions">
+              {#each matches as s (s.id)}
+                <li>
+                  <button type="button" onclick={() => pick(s)}>
+                    <span class="s-name">{s.name}</span>
+                    <span class="s-email">{s.email}</span>
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
         <p class="help-text">
-          Enter the email address of the person you want to invite. They'll receive an email with a
-          link to join.
+          {#if suggestions.length > 0}
+            Start typing, or pick someone from your other households. They'll receive an email with
+            a link to join.
+          {:else}
+            Enter the email address of the person you want to invite. They'll receive an email with
+            a link to join.
+          {/if}
         </p>
       </div>
 
@@ -173,6 +233,96 @@
 </Modal>
 
 <style>
+  .field-label {
+    display: block;
+    margin-bottom: var(--space-xs);
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+  }
+
+  .req {
+    color: var(--color-error);
+    margin-left: 2px;
+  }
+
+  .email-field {
+    position: relative;
+  }
+
+  .email-field input {
+    width: 100%;
+    /* 16px minimum stops iOS Safari zooming the page on focus */
+    font-size: 16px;
+    min-height: 44px;
+    padding: 0 var(--space-md);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    font-family: inherit;
+  }
+
+  .email-field input:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -1px;
+    border-color: var(--color-primary);
+  }
+
+  /* Below the input so the on-screen keyboard cannot cover it */
+  .suggestions {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    right: 0;
+    z-index: 30;
+    margin: 0;
+    padding: var(--space-xs);
+    list-style: none;
+    background-color: var(--color-bg-primary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    max-height: 14rem;
+    overflow-y: auto;
+  }
+
+  .suggestions button {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    width: 100%;
+    min-height: 48px;
+    padding: var(--space-xs) var(--space-sm);
+    border: none;
+    border-radius: var(--radius-sm);
+    background: none;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .suggestions button:hover,
+  .suggestions button:focus-visible {
+    background-color: var(--color-bg-secondary);
+    outline: none;
+  }
+
+  .s-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  /* Never truncated: names are not unique, so the email is what tells two
+     accounts for the same person apart. */
+  .s-email {
+    font-size: 0.8rem;
+    color: var(--color-text-tertiary);
+    word-break: break-all;
+  }
+
   .form-group {
     margin-bottom: var(--space-lg);
   }
@@ -234,10 +384,14 @@
     justify-content: space-between;
     align-items: center;
     gap: var(--space-md);
+    flex-wrap: wrap;
   }
 
   .invite-details {
     flex: 1;
+    /* Without this the long email sets a minimum width the flex item cannot
+       shrink below, so the row overflowed and scrolled the page sideways. */
+    min-width: 0;
   }
 
   .invite-email {
@@ -245,6 +399,8 @@
     font-size: 0.875rem;
     font-weight: 500;
     color: var(--color-text-primary);
+    /* Emails have no spaces to break on */
+    overflow-wrap: anywhere;
   }
 
   .invite-date {
@@ -256,5 +412,19 @@
   .invite-actions {
     display: flex;
     gap: var(--space-xs);
+    flex-shrink: 0;
+  }
+
+  @media (max-width: 480px) {
+    /* Actions drop below the address rather than competing with it for width */
+    .pending-invite-card {
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--space-sm);
+    }
+
+    .invite-actions {
+      justify-content: flex-end;
+    }
   }
 </style>

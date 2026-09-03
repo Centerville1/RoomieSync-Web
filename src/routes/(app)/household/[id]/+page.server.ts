@@ -15,6 +15,7 @@ import { generateId } from '$lib/server/utils';
 import { sendEmail } from '$lib/server/email';
 import { getHouseholdInviteEmail, getNudgeReminderEmail } from '$lib/server/email/templates';
 import { createInviteSignature } from '$lib/server/invite-signature';
+import { requireAdmin } from '$lib/server/household';
 
 const PAGE_SIZE = 20;
 
@@ -252,6 +253,68 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
   // Sort by date
   balanceEvents.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
+  // Every expense the current user still owes on, independent of the paginated
+  // list above. "Pay All Expenses" must reach expenses on later pages, and the
+  // pay modal looks each selected id up in an array, so the rows have to be
+  // present or the total silently undercounts.
+  const owedRows = await db
+    .select({
+      expense: expenses,
+      splitUserId: expenseSplits.userId,
+      splitHasPaid: expenseSplits.hasPaid,
+      splitPaidAt: expenseSplits.paidAt
+    })
+    .from(expenses)
+    .innerJoin(expenseSplits, eq(expenses.id, expenseSplits.expenseId))
+    .where(
+      and(
+        eq(expenses.householdId, householdId),
+        sql`${expenses.creatorId} != ${currentUserId}`,
+        // Restrict to expenses the user is actually part of and has not settled
+        sql`EXISTS (
+          SELECT 1 FROM expense_splits s
+          WHERE s.expense_id = ${expenses.id}
+            AND s.user_id = ${currentUserId}
+            AND s.has_paid = 0
+        )`
+      )
+    )
+    .orderBy(desc(expenses.createdAt));
+
+  const unpaidMap = new Map<
+    string,
+    {
+      id: string;
+      description: string;
+      amount: number;
+      isOptional: boolean;
+      creatorId: string;
+      createdAt: Date;
+      splits: { userId: string; hasPaid: boolean; paidAt: Date | null }[];
+    }
+  >();
+
+  for (const row of owedRows) {
+    if (!unpaidMap.has(row.expense.id)) {
+      unpaidMap.set(row.expense.id, {
+        id: row.expense.id,
+        description: row.expense.description,
+        amount: row.expense.amount,
+        isOptional: row.expense.isOptional,
+        creatorId: row.expense.creatorId,
+        createdAt: row.expense.createdAt,
+        splits: []
+      });
+    }
+    unpaidMap.get(row.expense.id)!.splits.push({
+      userId: row.splitUserId,
+      hasPaid: row.splitHasPaid,
+      paidAt: row.splitPaidAt
+    });
+  }
+
+  const unpaidExpenses = Array.from(unpaidMap.values());
+
   // Query: Full reverse expense data for cancel-out in PayExpensesModal
   // Expenses created by current user where other members have unpaid splits
   const reverseExpenseRows = await db
@@ -340,7 +403,8 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
     balanceHistory,
     nudgesSent,
     nudgesReceived,
-    reverseExpenses
+    reverseExpenses,
+    unpaidExpenses
   };
 };
 
@@ -1394,6 +1458,33 @@ export const actions: Actions = {
     await db
       .update(households)
       .set({ name, updatedAt: new Date() })
+      .where(eq(households.id, householdId));
+
+    return { success: true };
+  },
+
+  /**
+   * Archive or restore the household.
+   *
+   * A softer option than deletion, which was previously the only way for an
+   * admin to retire a household. Archiving only moves it out of the homepage's
+   * main list: expenses, shopping and every action keep working, and any admin
+   * can restore it.
+   */
+  setArchived: async ({ request, locals, params }) => {
+    const householdId = params.id;
+    const { user } = await requireAdmin(locals, householdId, 'archive the household');
+
+    const formData = await request.formData();
+    const archived = formData.get('archived') === 'true';
+
+    await db
+      .update(households)
+      .set({
+        archivedAt: archived ? new Date() : null,
+        archivedBy: archived ? user.id : null,
+        updatedAt: new Date()
+      })
       .where(eq(households.id, householdId));
 
     return { success: true };

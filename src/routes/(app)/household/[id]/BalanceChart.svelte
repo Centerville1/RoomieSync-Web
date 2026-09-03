@@ -2,7 +2,6 @@
   import { onMount } from 'svelte';
   import { Chart, registerables } from 'chart.js';
   import 'chartjs-adapter-date-fns';
-  import Checkbox from '$lib/components/Checkbox.svelte';
 
   Chart.register(...registerables);
 
@@ -374,9 +373,6 @@
       <p>No balance history yet. Create expenses to see your balance over time.</p>
     </div>
   {:else}
-    <div class="chart-controls">
-      <Checkbox bind:checked={includeOptional} label="Include optional expenses" />
-    </div>
     <canvas bind:this={canvas}></canvas>
   {/if}
 </div>
@@ -385,12 +381,6 @@
   .chart-container {
     height: 250px;
     position: relative;
-  }
-
-  .chart-controls {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: var(--space-sm);
   }
 
   .empty-state {

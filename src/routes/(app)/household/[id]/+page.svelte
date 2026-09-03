@@ -4,6 +4,7 @@
   import Button from '$lib/components/Button.svelte';
   import Badge from '$lib/components/Badge.svelte';
   import Input from '$lib/components/Input.svelte';
+  import Checkbox from '$lib/components/Checkbox.svelte';
   import SplitCostModal from './SplitCostModal.svelte';
   import PayExpensesModal from './PayExpensesModal.svelte';
   import EditExpenseModal from './EditExpenseModal.svelte';
@@ -24,6 +25,9 @@
   let showImportExpenseModal = $state(false);
   let showCancelPaymentModal = $state(false);
   let showNudgeModal = $state(false);
+  // The two totals are what people check; the chart is occasional, and it costs
+  // a lot of vertical space on a phone.
+  let showBalanceHistory = $state(false);
   let importExpenseDefaultCreatorId = $state('');
 
   // Nudge state
@@ -111,11 +115,6 @@
   // client-side navigation between two children of the same layout: the page may
   // already be mounted, and onMount would never fire.
   //
-  // Reads only the param, not the whole url, and latches once consumed. The
-  // effect calls replaceState, which mutates page.url, so tracking the url
-  // itself would mean writing to the source it depends on. The latch also stops
-  // a dismissed modal springing back open if the param reappears via Back or a
-  // shared link.
   // A latch, not a URL rewrite. Stripping the param with replaceState looked
   // like the tidy option but bought nothing: replaceState updates page.state and
   // the address bar without ever reassigning page.url, so the param stayed
@@ -164,17 +163,27 @@
     hasMoreExpenses = data.hasMoreExpenses;
   });
 
+  // Every expense the user owes on, from the server rather than the paginated
+  // list, so "Pay All Expenses" cannot miss ones on later pages.
   const allSelectableExpenseIds = $derived(
     new Set(
-      allExpenses
+      data.unpaidExpenses
         .filter((e) => {
-          if (e.creatorId === data.currentUserId) return false;
           const mySplit = e.splits.find((s) => s.userId === data.currentUserId);
           return mySplit !== undefined && !mySplit.hasPaid;
         })
         .map((e) => e.id)
     )
   );
+
+  // The pay modal resolves each selected id against this array, so it must hold
+  // the unpaid expenses even when they are not on the loaded page. Loaded rows
+  // win, since they carry the creator object the grid renders.
+  const payableExpenses = $derived.by(() => {
+    const byId = new Map(data.unpaidExpenses.map((e) => [e.id, e]));
+    for (const e of allExpenses) byId.set(e.id, e);
+    return [...byId.values()];
+  });
 
   async function loadMoreExpenses() {
     const response = await fetch(
@@ -224,36 +233,72 @@
   <main class="container">
     <!-- Summary Dashboard -->
     <section class="summary-dashboard">
-      <Card padding="md">
-        <div class="summary-header">
-          <h3 class="summary-title">Balance Overview</h3>
-          <div class="summary-totals">
-            <div class="summary-item you-owe">
-              <span class="summary-label">You Owe</span>
-              <span class="summary-amount">{formatCurrency(totalYouOwe)}</span>
+      <!-- padding: none so the toggle can sit flush as a footer bar -->
+      <Card padding="none">
+        <div class="summary-body">
+          <div class="summary-header">
+            <div class="summary-heading">
+              <h3 class="summary-title">Balance Overview</h3>
+              <!-- On the title row rather than its own line: it changes the
+                   totals, so it has to stay visible when the chart is
+                   collapsed, but it does not deserve a whole line. -->
+              <Checkbox bind:checked={includeOptional} label="Include optional" />
             </div>
-            <div class="summary-item owed-to-you">
-              <span class="summary-label">You're Owed</span>
-              <span class="summary-amount">{formatCurrency(totalOwedToYou)}</span>
+            <div class="summary-totals">
+              <div class="summary-item you-owe">
+                <span class="summary-label">You Owe</span>
+                <span class="summary-amount">{formatCurrency(totalYouOwe)}</span>
+              </div>
+              <div class="summary-item owed-to-you">
+                <span class="summary-label">You're Owed</span>
+                <span class="summary-amount">{formatCurrency(totalOwedToYou)}</span>
+              </div>
             </div>
           </div>
+
+          {#if showBalanceHistory}
+            <BalanceChart balanceHistory={data.balanceHistory} bind:includeOptional />
+          {/if}
         </div>
-        <BalanceChart balanceHistory={data.balanceHistory} bind:includeOptional />
+
+        <!-- Footer bar, flush to the card edge. Stays at the bottom as the card
+             grows, so the control that expanded the chart is where you left it. -->
+        <button
+          type="button"
+          class="history-toggle"
+          onclick={() => (showBalanceHistory = !showBalanceHistory)}
+          aria-expanded={showBalanceHistory}
+        >
+          <span class="caret" class:open={showBalanceHistory}>▸</span>
+          {showBalanceHistory ? 'Hide Historic Balance' : 'Show Historic Balance'}
+        </button>
       </Card>
     </section>
 
     <!-- Expenses Grid Section -->
     <section class="expenses-grid-section">
       <div class="expenses-header">
-        <div>
-          <h2>Expenses</h2>
-          <p class="expense-helper-text">Click on red rows to select expenses to pay</p>
+        <h2>Expenses</h2>
+        <div class="expenses-actions">
+          <div class="primary-cta">
+            <Button variant="success" size="sm" on:click={() => (showSplitCostModal = true)}>
+              <span class="cta-inner">
+                <span class="btn-plus" aria-hidden="true">+</span>
+                <span class="cta-text">
+                  <span class="cta-title">Split the Cost</span>
+                  <span class="cta-subtitle">Split an expense with the household</span>
+                </span>
+              </span>
+            </Button>
+          </div>
+          {#if allSelectableExpenseIds.size > 0}
+            <div class="secondary-cta">
+              <Button variant="outline" size="sm" on:click={handlePayAll}>
+                Pay All Expenses ({allSelectableExpenseIds.size})
+              </Button>
+            </div>
+          {/if}
         </div>
-        {#if allSelectableExpenseIds.size > 0}
-          <Button variant="primary" size="sm" on:click={handlePayAll}>
-            Pay All Expenses ({allSelectableExpenseIds.size})
-          </Button>
-        {/if}
       </div>
       <ExpenseGrid
         members={data.members}
@@ -263,10 +308,10 @@
         currentUserId={data.currentUserId}
         {selectedExpenseIds}
         onSelectionChange={handleSelectionChange}
+        allSelectableIds={allSelectableExpenseIds}
         memberBalances={data.memberBalances}
         onEditExpense={handleEditExpense}
         onDeleteExpense={handleDeleteExpense}
-        onSplitCost={() => (showSplitCostModal = true)}
         isAdmin={data.userRole === 'admin'}
         onImportExpense={handleImportExpense}
         onPayExpenses={handlePayExpensesClick}
@@ -274,16 +319,6 @@
         nudgesSent={data.nudgesSent}
         onNudge={handleNudge}
       />
-      <div class="pay-button-container">
-        <Button
-          variant="primary"
-          size="lg"
-          on:click={handlePayExpensesClick}
-          disabled={selectedExpenseIds.size === 0}
-        >
-          Pay Expenses{selectedExpenseIds.size > 0 ? ` (${selectedExpenseIds.size})` : ''}
-        </Button>
-      </div>
     </section>
 
     <!-- Members Section (non-admins only — admins manage members in settings) -->
@@ -315,6 +350,17 @@
   </main>
 </div>
 
+<!-- Pay Selected: appears only while rows are selected, floating at the bottom
+     centre on every platform so it is reachable without scrolling past the
+     table. -->
+{#if selectedExpenseIds.size > 0}
+  <div class="pay-selected-bar" role="region" aria-label="Selected expenses">
+    <Button variant="primary" size="lg" on:click={handlePayExpensesClick}>
+      Pay Selected ({selectedExpenseIds.size})
+    </Button>
+  </div>
+{/if}
+
 <!-- Split the Cost Modal -->
 <SplitCostModal bind:open={showSplitCostModal} members={otherMembers} />
 
@@ -322,7 +368,7 @@
 <PayExpensesModal
   bind:open={showPayExpensesModal}
   {selectedExpenseIds}
-  expenses={allExpenses}
+  expenses={payableExpenses}
   reverseExpenses={data.reverseExpenses}
   members={data.members}
   currentUserId={data.currentUserId}
@@ -402,7 +448,54 @@
   }
 
   main {
-    padding: var(--space-2xl) var(--space-md);
+    padding: var(--space-2xl) var(--space-md) var(--space-md);
+  }
+
+  .summary-body {
+    padding: var(--space-lg) var(--space-lg) var(--space-md);
+  }
+
+  .summary-heading {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    flex-wrap: wrap;
+  }
+
+  /* Thin footer bar, flush to the card's edges */
+  .history-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    width: 100%;
+    min-height: 38px;
+    padding: 0 var(--space-lg);
+    border: none;
+    border-top: 1px solid var(--color-border);
+    /* Matches the card's radius so it does not square off the bottom */
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    background-color: var(--color-bg-secondary);
+    color: var(--color-text-secondary);
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .history-toggle:hover {
+    background-color: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+  }
+
+  .caret {
+    display: inline-block;
+    font-size: 0.8rem;
+    transition: transform 0.15s ease;
+  }
+
+  .caret.open {
+    transform: rotate(90deg);
   }
 
   /* Summary Dashboard */
@@ -459,9 +552,14 @@
     color: var(--color-success);
   }
 
-  .expenses-grid-section,
   .members-section {
     margin-bottom: var(--space-2xl);
+  }
+
+  /* No bottom margin: the grid is the last thing on the page for most users,
+     and ExpenseGrid already carries its own spacing. */
+  .expenses-grid-section {
+    margin-bottom: 0;
   }
 
   .expenses-grid-section h2,
@@ -473,10 +571,56 @@
 
   .expenses-header {
     display: flex;
+    flex-direction: column;
     align-items: flex-start;
-    justify-content: space-between;
     gap: var(--space-md);
     margin-bottom: var(--space-md);
+  }
+
+  .expenses-actions {
+    display: flex;
+    align-items: center;
+    /* Left aligned rather than pushed to the right edge, so the CTA sits with
+       the heading it belongs to */
+    justify-content: flex-start;
+    gap: var(--space-md);
+    flex-shrink: 0;
+  }
+
+  /* The CTA carries real weight on desktop too, not just mobile */
+  .primary-cta :global(.btn) {
+    min-height: 58px;
+    padding: var(--space-sm) var(--space-lg);
+  }
+
+  .cta-inner {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+
+  .cta-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: 1.2;
+  }
+
+  .cta-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+  }
+
+  .cta-subtitle {
+    font-size: 0.78rem;
+    font-weight: 500;
+    opacity: 0.85;
+  }
+
+  .btn-plus {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1;
   }
 
   .expenses-header :global(.btn) {
@@ -488,19 +632,36 @@
     margin: 0 0 var(--space-xs) 0;
   }
 
-  .expense-helper-text {
-    margin: 0;
-    font-size: 0.875rem;
-    color: var(--color-error, #ef4444);
-  }
-
-  .pay-button-container {
+  .pay-selected-bar {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    /* Clears the iPhone home indicator */
+    bottom: calc(var(--space-lg) + env(safe-area-inset-bottom));
+    z-index: 60;
     display: flex;
     justify-content: center;
   }
 
-  .pay-button-container :global(button) {
-    min-width: 200px;
+  .pay-selected-bar :global(.btn) {
+    min-width: 230px;
+    min-height: 52px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    border-radius: 999px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  }
+
+  @media (max-width: 767px) {
+    .pay-selected-bar {
+      left: var(--space-md);
+      right: var(--space-md);
+      transform: none;
+    }
+
+    .pay-selected-bar :global(.btn) {
+      width: 100%;
+    }
   }
 
   .members-grid {
@@ -532,6 +693,56 @@
     font-size: 0.75rem;
     font-weight: normal;
     color: var(--color-text-tertiary);
+  }
+
+  @media (max-width: 767px) {
+    main {
+      padding: var(--space-lg) var(--space-md) var(--space-sm);
+    }
+
+    .summary-body {
+      padding: var(--space-md) var(--space-md) var(--space-sm);
+    }
+
+    .summary-heading {
+      gap: var(--space-sm);
+    }
+
+    /* Stack the header so the actions get real width. The Split the Cost CTA
+       used to live inside the horizontally scrolling grid as a ~110px cell at
+       0.7rem, which could be scrolled off screen entirely. */
+    .expenses-header {
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--space-sm);
+    }
+
+    .expenses-actions {
+      flex-direction: column;
+      align-items: stretch;
+      /* Clear separation: these do very different things and one is
+         destructive-adjacent (it opens a payment flow). */
+      gap: var(--space-lg);
+    }
+
+    .expenses-header :global(.btn) {
+      width: 100%;
+      align-self: stretch;
+    }
+
+    /* The CTA carries the weight; Pay All is contextual and sits quieter */
+    .primary-cta :global(.btn) {
+      min-height: 62px;
+    }
+
+    .primary-cta .cta-inner {
+      justify-content: center;
+    }
+
+    .secondary-cta :global(.btn) {
+      min-height: 44px;
+      font-size: 0.95rem;
+    }
   }
 
   /* Nudge Toast Styles */

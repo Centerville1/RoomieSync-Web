@@ -43,10 +43,14 @@
     currentUserId?: string;
     selectedExpenseIds?: Set<string>;
     onSelectionChange?: (selectedIds: Set<string>) => void;
+    /**
+     * Every expense the current user owes on, across all pages. The grid only
+     * holds the loaded page, so select-all has to come from the page.
+     */
+    allSelectableIds?: Set<string>;
     memberBalances?: Record<string, MemberBalance>;
     onEditExpense?: (expense: Expense) => void;
     onDeleteExpense?: (expense: Expense) => void;
-    onSplitCost?: () => void;
     isAdmin?: boolean;
     onImportExpense?: (memberId: string) => void;
     onPayExpenses?: () => void;
@@ -63,10 +67,10 @@
     currentUserId,
     selectedExpenseIds = new Set(),
     onSelectionChange,
+    allSelectableIds = new Set(),
     memberBalances = {},
     onEditExpense,
     onDeleteExpense,
-    onSplitCost,
     isAdmin = false,
     onImportExpense,
     onPayExpenses,
@@ -76,7 +80,6 @@
   }: Props = $props();
 
   // Track hover state for the split cost row
-  let splitCostRowHovered = $state(false);
 
   // Fullscreen state
   let isFullscreen = $state(false);
@@ -309,6 +312,15 @@
     return split.hasPaid ? 'paid' : 'unpaid';
   }
 
+  const allSelected = $derived(
+    allSelectableIds.size > 0 && [...allSelectableIds].every((id) => selectedExpenseIds.has(id))
+  );
+
+  function toggleSelectAll() {
+    if (!onSelectionChange) return;
+    onSelectionChange(allSelected ? new Set() : new Set(allSelectableIds));
+  }
+
   function isSelectableByCurrentUser(expense: Expense): boolean {
     if (!currentUserId) return false;
     // Can't select expenses I created
@@ -376,6 +388,16 @@
       </svg>
     {/if}
   </button>
+
+  {#if allSelectableIds.size > 0 && onSelectionChange}
+    <div class="select-all-bar">
+      <label class="select-all">
+        <input type="checkbox" checked={allSelected} onchange={toggleSelectAll} />
+        <span>{allSelected ? 'Deselect All' : 'Select All'}</span>
+      </label>
+      <span class="select-all-hint">Tap the red rows to pick individually</span>
+    </div>
+  {/if}
 
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <!-- Scrollable container for both header and content -->
@@ -465,39 +487,6 @@
 
       <!-- Grid body -->
       <div class="expense-grid">
-        <!-- Split the Cost row -->
-        {#if onSplitCost}
-          <div
-            class="grid-row split-cost-row"
-            class:hovered={splitCostRowHovered}
-            onclick={onSplitCost}
-            onkeydown={(e) => e.key === 'Enter' && onSplitCost?.()}
-            onmouseenter={() => (splitCostRowHovered = true)}
-            onmouseleave={() => (splitCostRowHovered = false)}
-            role="button"
-            tabindex="0"
-          >
-            {#each sortedMembers as member}
-              {@const isCurrentUser = member.id === currentUserId}
-              <div class="grid-cell split-cost-cell" class:current-user-cell={isCurrentUser}>
-                {#if isCurrentUser}
-                  <div class="split-cost-content">
-                    <img src="/icon-nobg.png" alt="" class="split-cost-logo" />
-                    <div class="split-cost-text">
-                      <span class="split-cost-title">Split the Cost</span>
-                      <span class="split-cost-subtitle">Click to create expense</span>
-                    </div>
-                  </div>
-                  {#if splitCostRowHovered}
-                    <div class="split-cost-plus-container">
-                      <span class="split-cost-plus">+</span>
-                    </div>
-                  {/if}
-                {/if}
-              </div>
-            {/each}
-          </div>
-        {/if}
         {#each expenses as expense}
           {@const isSelectable = isSelectableByCurrentUser(expense)}
           {@const isSelected = selectedExpenseIds.has(expense.id)}
@@ -776,6 +765,49 @@
     min-width: max-content;
   }
 
+  /* Outside the scroll container on purpose. Inside it the bar lived in
+     .grid-content, which is min-width: max-content, so its background only
+     spanned the grid's own width and broke once the grid scrolled. Out here it
+     always spans the wrapper. */
+  .select-all-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+    /* Right padding clears the absolutely positioned fullscreen button, which
+       sits at z-index 10 and would otherwise cover the hint text. */
+    padding-right: calc(32px + var(--space-sm) * 2 + var(--space-sm));
+    background-color: var(--color-bg-secondary);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .select-all {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    min-height: 40px;
+    color: var(--color-text-primary);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .select-all input {
+    width: 20px;
+    height: 20px;
+    accent-color: var(--color-primary);
+    cursor: pointer;
+  }
+
+  .select-all-hint {
+    /* Red, matching the rows it refers to */
+    color: var(--color-error);
+    font-size: 0.82rem;
+  }
+
   .grid-header {
     display: grid;
     grid-template-columns: repeat(var(--member-count), minmax(150px, 300px));
@@ -799,6 +831,11 @@
     flex-direction: column;
     align-items: center;
     gap: 3px;
+    /* Each cell paints its own background. The row's background only spans the
+       grid's own width, so once the grid scrolls horizontally the uncovered
+       cells fell through to the page and the header looked like it ended
+       mid-row. */
+    background-color: var(--color-bg-tertiary);
   }
 
   .member-header.current-user {
@@ -866,80 +903,6 @@
   }
 
   /* Split the Cost row styles */
-  .split-cost-row {
-    cursor: pointer;
-  }
-
-  .split-cost-row:focus {
-    outline: 2px solid var(--color-success);
-    outline-offset: -2px;
-  }
-
-  .split-cost-row:focus-visible {
-    outline: 2px solid var(--color-success);
-    outline-offset: -2px;
-  }
-
-  .split-cost-row .split-cost-cell {
-    position: relative;
-    background-color: var(--color-bg-secondary);
-    transition: background-color 0.2s ease;
-    border-bottom: 3px solid var(--color-border);
-  }
-
-  .split-cost-row.hovered .split-cost-cell {
-    background-color: rgba(16, 185, 129, 0.08);
-    border-bottom-color: var(--color-success, #10b981);
-  }
-
-  .split-cost-row .split-cost-cell.current-user-cell {
-    background-color: rgba(16, 185, 129, 0.06);
-    border-left: 3px solid var(--color-success, #10b981);
-  }
-
-  .split-cost-row.hovered .split-cost-cell.current-user-cell {
-    background-color: rgba(16, 185, 129, 0.15);
-  }
-
-  .split-cost-content {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-  }
-
-  .split-cost-logo {
-    width: 32px;
-    height: 32px;
-    object-fit: contain;
-    transition: transform 0.2s ease;
-  }
-
-  .split-cost-row.hovered .split-cost-logo {
-    transform: scale(1.1);
-  }
-
-  .split-cost-plus-container {
-    position: absolute;
-    left: 50%;
-    bottom: 0;
-    transform: translate(-50%, 50%);
-    z-index: 1;
-  }
-
-  .split-cost-plus {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background-color: var(--color-success, #10b981);
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1rem;
-    font-weight: 600;
-    line-height: 1;
-    animation: fadeIn 0.15s ease;
-  }
 
   @keyframes fadeIn {
     from {
@@ -950,32 +913,6 @@
       opacity: 1;
       transform: scale(1);
     }
-  }
-
-  .split-cost-text {
-    display: flex;
-    flex-direction: column;
-    text-align: left;
-  }
-
-  .split-cost-title {
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--color-success, #10b981);
-  }
-
-  .split-cost-subtitle {
-    font-size: 0.7rem;
-    color: var(--color-text-tertiary);
-    transition: color 0.2s ease;
-  }
-
-  .split-cost-row.hovered .split-cost-subtitle {
-    color: var(--color-success, #10b981);
-  }
-
-  .split-cost-row.hovered .split-cost-cell {
-    box-shadow: 0 3px 8px rgba(16, 185, 129, 0.3);
   }
 
   .grid-cell {
@@ -1469,6 +1406,23 @@
 
   /* Mobile responsive overrides */
   @media (max-width: 767px) {
+    /* Hint drops below the checkbox rather than being squeezed against the
+       fullscreen button */
+    .select-all-bar {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+      padding-right: calc(32px + var(--space-sm) * 3);
+    }
+
+    .select-all {
+      min-height: 32px;
+    }
+
+    .select-all-hint {
+      font-size: 0.78rem;
+    }
+
     .grid-content {
       min-width: unset;
       width: 100%;
@@ -1497,10 +1451,6 @@
     }
 
     /* Prevent split cost title from wrapping */
-    .split-cost-title {
-      white-space: nowrap;
-      font-size: 0.7rem;
-    }
 
     .member-header {
       padding: var(--space-xs);
@@ -1534,15 +1484,6 @@
 
     .expense-amount {
       font-size: 0.75rem;
-    }
-
-    .split-cost-subtitle {
-      display: none;
-    }
-
-    .split-cost-logo {
-      width: 20px;
-      height: 20px;
     }
 
     .text-label {
