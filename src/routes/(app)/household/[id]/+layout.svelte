@@ -111,6 +111,7 @@
     bind:open={showInviteModal}
     pendingInvites={data.pendingInvites}
     householdId={data.household.id}
+    suggestions={data.inviteSuggestions}
     {form}
   />
 

@@ -2,7 +2,7 @@ import { error, redirect } from '@sveltejs/kit';
 import type { LayoutServerLoad } from './$types';
 import { db } from '$lib/server/db/client';
 import { households, householdMembers, users, invites, shoppingItems } from '$lib/server/db/schema';
-import { eq, and, isNull, or, count } from 'drizzle-orm';
+import { eq, and, ne, isNull, or, count, inArray, notInArray, asc } from 'drizzle-orm';
 
 /**
  * Shared household context for every tab (expenses, shopping, ...).
@@ -59,6 +59,57 @@ export const load: LayoutServerLoad = async ({ locals, params }) => {
     .from(invites)
     .where(and(eq(invites.householdId, householdId), eq(invites.used, false)));
 
+  // Autofill for the invite form: people from the user's other households, so
+  // inviting a housemate you already share a place with is one tap.
+  //
+  // Only fetched for admins, since nobody else can invite. Excludes anyone
+  // already in this household or already invited, so every suggestion is
+  // actionable.
+  const isAdmin = householdData[0].member.role === 'admin';
+
+  const inviteSuggestions = isAdmin
+    ? await db
+        .selectDistinct({
+          id: users.id,
+          name: users.name,
+          email: users.email
+        })
+        .from(users)
+        .innerJoin(householdMembers, eq(householdMembers.userId, users.id))
+        .where(
+          and(
+            // Households the current user belongs to, other than this one
+            inArray(
+              householdMembers.householdId,
+              db
+                .select({ id: householdMembers.householdId })
+                .from(householdMembers)
+                .where(eq(householdMembers.userId, locals.user.id))
+            ),
+            ne(householdMembers.householdId, householdId),
+            // Not the user themselves
+            ne(users.id, locals.user.id),
+            // Not already a member here
+            notInArray(
+              users.id,
+              db
+                .select({ id: householdMembers.userId })
+                .from(householdMembers)
+                .where(eq(householdMembers.householdId, householdId))
+            ),
+            // Not already invited here
+            notInArray(
+              users.email,
+              db
+                .select({ email: invites.invitedEmail })
+                .from(invites)
+                .where(and(eq(invites.householdId, householdId), eq(invites.used, false)))
+            )
+          )
+        )
+        .orderBy(asc(users.name))
+    : [];
+
   // Open shopping items for the tab badge: shared items plus the current
   // user's own personal ones. Counts what this user still has to buy.
   const openItemsResult = await db
@@ -77,6 +128,7 @@ export const load: LayoutServerLoad = async ({ locals, params }) => {
     // every tab without another query
     household: householdData[0].household,
     pendingInvites,
+    inviteSuggestions,
     openShoppingItems: openItemsResult[0]?.count ?? 0,
     userRole: householdData[0].member.role,
     currentUserId: locals.user.id,
