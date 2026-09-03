@@ -20,7 +20,7 @@
     description: string;
     amount: number;
     isOptional: boolean;
-    tagId?: string | null;
+    tagId: string | null;
     creatorId: string;
     createdAt: Date;
     splits: Split[];

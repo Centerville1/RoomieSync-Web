@@ -493,7 +493,12 @@ export const actions: Actions = {
     const amount = parseAmount(formData.get('amount'));
     const description = formData.get('description') as string;
     const isOptional = formData.get('isOptional') === 'on';
-    const tagId = (formData.get('tagId') as string) || null;
+    // Tags are admin-managed, so only an admin may apply one. A tag posted by
+    // anyone else is dropped rather than rejected: the field is not shown to
+    // them, so the only way to get here is a stale form, and failing the whole
+    // expense over it would lose their work.
+    const isAdmin = membership[0].role === 'admin';
+    const tagId = isAdmin ? (formData.get('tagId') as string) || null : null;
     const splitWith = formData.getAll('splitWith') as string[];
 
     // Validate input. parseAmount rejects Infinity, NaN and trailing junk,
@@ -1009,7 +1014,7 @@ export const actions: Actions = {
     const expenseId = formData.get('expenseId') as string;
     const description = formData.get('description') as string;
     const isOptional = formData.get('isOptional') === 'on';
-    const tagId = (formData.get('tagId') as string) || null;
+    const postedTagId = (formData.get('tagId') as string) || null;
     const splitWith = formData.getAll('splitWith') as string[];
 
     if (!expenseId) {
@@ -1036,6 +1041,12 @@ export const actions: Actions = {
     if (expense.length === 0) {
       return fail(403, { error: 'You can only edit expenses you created' });
     }
+
+    // Only an admin may change the tag. For anyone else the expense keeps the
+    // tag it has: the field is not rendered for them, and a missing tagId would
+    // otherwise read as "clear it", silently untagging the rent every time the
+    // creator fixed a typo.
+    const tagId = membership[0].role === 'admin' ? postedTagId : expense[0].tagId;
 
     if (!(await tagBelongsToHousehold(tagId, householdId))) {
       return fail(400, { error: 'Unknown tag' });
@@ -1629,7 +1640,10 @@ export const actions: Actions = {
 
   createTag: async ({ request, locals, params }) => {
     const householdId = params.id;
-    await requireMembership(locals, householdId);
+    // Admin only, like the rest of tag management: a tag is a household-wide
+    // label that changes how every member sees an expense, so who defines the
+    // vocabulary is an admin decision.
+    await requireAdmin(locals, householdId, 'manage expense tags');
 
     const formData = await request.formData();
     const name = (formData.get('name') as string)?.trim();
@@ -1673,7 +1687,8 @@ export const actions: Actions = {
 
   updateTag: async ({ request, locals, params }) => {
     const householdId = params.id;
-    await requireMembership(locals, householdId);
+    // Admin only: renaming a tag renames it for everyone who can see it.
+    await requireAdmin(locals, householdId, 'manage expense tags');
 
     const formData = await request.formData();
     const tagId = formData.get('tagId') as string;
@@ -1714,9 +1729,9 @@ export const actions: Actions = {
 
   deleteTag: async ({ request, locals, params }) => {
     const householdId = params.id;
-    // Admin only: deleting a tag untags every expense that used it, and there
-    // is no record of what the tag was afterwards.
-    await requireAdmin(locals, householdId, 'delete expense tags');
+    // Untags every expense that used it, and leaves no record of what the tag
+    // was afterwards.
+    await requireAdmin(locals, householdId, 'manage expense tags');
 
     const formData = await request.formData();
     const tagId = formData.get('tagId') as string;

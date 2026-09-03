@@ -103,8 +103,7 @@
             {/each}
           </select>
           <p class="tag-help">
-            Tagging an expense marks it as important: it gets its own colour and raises a banner
-            until everyone has paid.
+            Marks the expense as important and flags it for all household members.
           </p>
         </div>
       {/if}
@@ -150,6 +149,12 @@
     background-color: var(--color-bg-primary);
     color: var(--color-text-primary);
     font-family: inherit;
+  }
+
+  select:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -1px;
+    border-color: var(--color-primary);
   }
 
   .tag-help {

@@ -6,17 +6,16 @@
 
   type Tag = { id: string; name: string; color: string | null; sortOrder: number };
 
+  // Only reachable by admins: tags are household-wide labels, so who defines
+  // them is an admin decision. The server enforces this on every action.
   let {
     open = $bindable(false),
     tags = [],
-    householdId,
-    isAdmin = false
+    householdId
   }: {
     open: boolean;
     tags: Tag[];
     householdId: string;
-    /** Only admins may delete a tag; it untags every expense that used it */
-    isAdmin?: boolean;
   } = $props();
 
   const actionBase = $derived(`/household/${householdId}`);
@@ -146,15 +145,13 @@
               </span>
               <div class="tag-actions">
                 <button type="button" class="text-btn" onclick={() => startEdit(tag)}>Edit</button>
-                {#if isAdmin}
-                  <button
-                    type="button"
-                    class="text-btn danger"
-                    onclick={() => (confirmDeleteId = tag.id)}
-                  >
-                    Delete
-                  </button>
-                {/if}
+                <button
+                  type="button"
+                  class="text-btn danger"
+                  onclick={() => (confirmDeleteId = tag.id)}
+                >
+                  Delete
+                </button>
               </div>
             {/if}
           </li>

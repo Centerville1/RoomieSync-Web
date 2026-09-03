@@ -18,6 +18,7 @@
     description: string;
     amount: number;
     isOptional: boolean;
+    tagId: string | null;
     creatorId: string;
     createdAt: Date;
     splits: ExpenseSplit[];
@@ -29,18 +30,23 @@
     displayName: string | null;
   };
 
+  type Tag = { id: string; name: string; color: string | null };
+
   let {
     open = $bindable(false),
     expense = null,
-    members = []
+    members = [],
+    tags = []
   }: {
     open: boolean;
     expense: Expense | null;
     members: Member[];
+    tags?: Tag[];
   } = $props();
 
   let description = $state('');
   let isOptional = $state(false);
+  let tagId = $state('');
   let selectedMembers = $state<string[]>([]);
 
   // Get members excluding the expense creator (they're always included)
@@ -54,6 +60,7 @@
     if (expense) {
       description = expense.description;
       isOptional = expense.isOptional;
+      tagId = expense.tagId ?? '';
       // Initialize selected members from current splits (excluding creator)
       const splitMemberIds = expense.splits
         .filter((s) => s.userId !== expense.creatorId)
@@ -228,6 +235,25 @@
           </MemberSelect>
         </div>
 
+        {#if tags.length > 0}
+          <div class="form-group">
+            <label for="edit-expense-tag" class="tag-label">Type (optional)</label>
+            <select bind:value={tagId} name="tagId" id="edit-expense-tag">
+              <option value="">No tag</option>
+              {#each tags as t (t.id)}
+                <option value={t.id}>{t.name}</option>
+              {/each}
+            </select>
+            <p class="tag-help">
+              Marks the expense as important and flags it for all household members.
+            </p>
+          </div>
+        {:else}
+          <!-- No tags defined, but the field must still post: editExpense reads a
+               missing tagId as "clear the tag". -->
+          <input type="hidden" name="tagId" value={tagId} />
+        {/if}
+
         <div class="form-group">
           <Checkbox
             name="isOptional"
@@ -350,6 +376,40 @@
 </Modal>
 
 <style>
+  .tag-label {
+    display: block;
+    margin-bottom: var(--space-xs);
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+  }
+
+  select {
+    width: 100%;
+    /* 16px minimum stops iOS Safari zooming the page on focus */
+    font-size: 16px;
+    min-height: 44px;
+    padding: 0 var(--space-sm);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    font-family: inherit;
+  }
+
+  select:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -1px;
+    border-color: var(--color-primary);
+  }
+
+  .tag-help {
+    margin: var(--space-xs) 0 0;
+    color: var(--color-text-tertiary);
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+
   .form-group {
     margin-bottom: var(--space-lg);
   }

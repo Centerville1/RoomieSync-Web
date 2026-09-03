@@ -49,10 +49,14 @@
     description: string;
     amount: number;
     isOptional: boolean;
+    tagId: string | null;
     creatorId: string;
     createdAt: Date;
     splits: { userId: string; amount: number | null; hasPaid: boolean; paidAt: Date | null }[];
   };
+  // Tags are admin-managed: members see them on expenses but cannot define them
+  const isAdmin = $derived(data.userRole === 'admin');
+
   let selectedExpenseForEdit = $state<Expense | null>(null);
   let selectedExpenseForDelete = $state<Expense | null>(null);
   let selectedExpenseForCancelPayment = $state<Expense | null>(null);
@@ -346,9 +350,11 @@
               </span>
             </Button>
           </div>
-          <button type="button" class="manage-tags" onclick={() => (showTagModal = true)}>
-            Tags
-          </button>
+          {#if isAdmin}
+            <button type="button" class="manage-tags" onclick={() => (showTagModal = true)}>
+              Tags
+            </button>
+          {/if}
           {#if allSelectableExpenseIds.size > 0}
             <div class="secondary-cta">
               <Button variant="outline" size="sm" on:click={handlePayAll}>
@@ -420,19 +426,16 @@
   </div>
 {/if}
 
-<!-- Split the Cost Modal -->
-<TagManagerModal
-  bind:open={showTagModal}
-  tags={data.tags}
-  householdId={data.household.id}
-  isAdmin={data.userRole === 'admin'}
-/>
+{#if isAdmin}
+  <TagManagerModal bind:open={showTagModal} tags={data.tags} householdId={data.household.id} />
+{/if}
 
+<!-- Split the Cost Modal -->
 <SplitCostModal
   bind:open={showSplitCostModal}
   members={otherMembers}
   currentUserId={data.currentUserId}
-  tags={data.tags}
+  tags={isAdmin ? data.tags : []}
   {form}
 />
 
@@ -452,6 +455,7 @@
   bind:open={showEditExpenseModal}
   expense={selectedExpenseForEdit}
   members={data.members}
+  tags={isAdmin ? data.tags : []}
 />
 
 <!-- Delete Expense Modal -->
