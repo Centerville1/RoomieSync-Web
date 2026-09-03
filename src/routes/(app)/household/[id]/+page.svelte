@@ -375,6 +375,7 @@
   bind:open={showSplitCostModal}
   members={otherMembers}
   currentUserId={data.currentUserId}
+  {form}
 />
 
 <!-- Pay Expenses Modal -->

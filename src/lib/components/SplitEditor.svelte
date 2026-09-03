@@ -13,7 +13,9 @@
     /** Always included and paid up front; also absorbs remainder pennies. */
     payerId,
     payerLabel = 'You',
-    initializeAll = true
+    initializeAll = true,
+    /** False while the set amounts cannot be reconciled with the total. */
+    valid = $bindable(true)
   }: {
     members: Member[];
     selectedMembers?: string[];
@@ -22,6 +24,7 @@
     payerId: string;
     payerLabel?: string;
     initializeAll?: boolean;
+    valid?: boolean;
   } = $props();
 
   let hasInitialized = $state(false);
@@ -62,6 +65,20 @@
     participants.length > 0 && participants.every((p) => overrides[p.id] !== undefined)
   );
   const overriddenMismatch = $derived(allOverridden && Math.abs(overriddenTotal - total) > 0.005);
+
+  // How far the pinned amounts are from the expense, signed
+  const shortfall = $derived(total - overriddenTotal);
+
+  // Whether anyone is still taking an even share. When the pinned amounts
+  // already exceed the total, clearing one more does not help: it just leaves
+  // that person on zero, so the advice has to differ.
+  const hasUnpinned = $derived(participants.some((p) => overrides[p.id] === undefined));
+
+  // The server rejects a split that does not reconcile, so surface it here
+  // rather than letting submit be the way it is discovered.
+  $effect(() => {
+    valid = !(overCommitted || overriddenMismatch);
+  });
 
   // Which row is being edited, and the text in its field
   let editingId = $state<string | null>(null);
@@ -157,12 +174,22 @@
 
   {#if overCommitted}
     <p class="warn">
-      The set amounts add up to more than the expense, so everyone else would owe nothing.
+      The amounts you set come to <strong>${formatAmount(overriddenTotal)}</strong>, which is ${formatAmount(
+        -shortfall
+      )} more than the ${formatAmount(total)} expense.
+      {#if hasUnpinned}
+        Lower one, or raise the expense amount: the shares still sharing the rest have nothing left
+        to take.
+      {:else}
+        Lower one, or clear a share so it can take the rest.
+      {/if}
     </p>
   {:else if overriddenMismatch}
     <p class="warn">
-      Every share is set manually but they add up to {formatAmount(overriddenTotal)}, not
-      {formatAmount(total)}.
+      Every share is set by hand and they come to <strong>${formatAmount(overriddenTotal)}</strong>,
+      ${formatAmount(Math.abs(shortfall))}
+      {shortfall > 0 ? 'short of' : 'over'} the ${formatAmount(total)} expense. Adjust one, or clear a
+      share to let it take the rest.
     </p>
   {/if}
 

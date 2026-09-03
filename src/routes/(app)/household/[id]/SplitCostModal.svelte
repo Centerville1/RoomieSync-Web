@@ -10,17 +10,23 @@
   let {
     open = $bindable(false),
     members = [],
-    currentUserId
+    currentUserId,
+    form
   }: {
     open: boolean;
     members: Array<{ id: string; name: string; displayName: string | null }>;
     currentUserId: string;
+    form?: { error?: string } | null;
   } = $props();
 
   let selectedMembers = $state<string[]>([]);
   let overrides = $state<Record<string, number>>({});
   let amount = $state(0);
   let isOptional = $state(false);
+  // Set false by the split editor while the pinned amounts cannot reconcile
+  let splitValid = $state(true);
+
+  const canSubmit = $derived(amount > 0 && splitValid);
 
   function handleClose() {
     open = false;
@@ -69,6 +75,7 @@
           {members}
           bind:selectedMembers
           bind:overrides
+          bind:valid={splitValid}
           total={amount}
           payerId={currentUserId}
         />
@@ -85,16 +92,30 @@
           label="Optional expense (people can choose to pay)"
         />
       </div>
+      {#if form?.error}
+        <p class="form-error">{form.error}</p>
+      {/if}
     </form>
   {/snippet}
 
   {#snippet footer()}
     <Button type="button" variant="ghost" on:click={handleClose}>Cancel</Button>
-    <Button type="submit" variant="success" form="expense-form">Create Expense</Button>
+    <Button type="submit" variant="success" form="expense-form" disabled={!canSubmit}>
+      Create Expense
+    </Button>
   {/snippet}
 </Modal>
 
 <style>
+  .form-error {
+    margin: var(--space-sm) 0 0;
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-md);
+    background-color: color-mix(in srgb, var(--color-error) 12%, transparent);
+    color: var(--color-error);
+    font-size: 0.88rem;
+  }
+
   .form-group {
     margin-bottom: var(--space-lg);
   }
