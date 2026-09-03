@@ -233,26 +233,36 @@
   <main class="container">
     <!-- Summary Dashboard -->
     <section class="summary-dashboard">
-      <Card padding="md">
-        <div class="summary-header">
-          <h3 class="summary-title">Balance Overview</h3>
-          <div class="summary-totals">
-            <div class="summary-item you-owe">
-              <span class="summary-label">You Owe</span>
-              <span class="summary-amount">{formatCurrency(totalYouOwe)}</span>
+      <!-- padding: none so the toggle can sit flush as a footer bar -->
+      <Card padding="none">
+        <div class="summary-body">
+          <div class="summary-header">
+            <div class="summary-heading">
+              <h3 class="summary-title">Balance Overview</h3>
+              <!-- On the title row rather than its own line: it changes the
+                   totals, so it has to stay visible when the chart is
+                   collapsed, but it does not deserve a whole line. -->
+              <Checkbox bind:checked={includeOptional} label="Include optional" />
             </div>
-            <div class="summary-item owed-to-you">
-              <span class="summary-label">You're Owed</span>
-              <span class="summary-amount">{formatCurrency(totalOwedToYou)}</span>
+            <div class="summary-totals">
+              <div class="summary-item you-owe">
+                <span class="summary-label">You Owe</span>
+                <span class="summary-amount">{formatCurrency(totalYouOwe)}</span>
+              </div>
+              <div class="summary-item owed-to-you">
+                <span class="summary-label">You're Owed</span>
+                <span class="summary-amount">{formatCurrency(totalOwedToYou)}</span>
+              </div>
             </div>
           </div>
+
+          {#if showBalanceHistory}
+            <BalanceChart balanceHistory={data.balanceHistory} bind:includeOptional />
+          {/if}
         </div>
 
-        <!-- Sits with the totals rather than in the chart: it changes these
-             numbers, so it must stay visible when the chart is collapsed. -->
-        <div class="optional-toggle">
-          <Checkbox bind:checked={includeOptional} label="Include optional expenses" />
-        </div>
+        <!-- Footer bar, flush to the card edge. Stays at the bottom as the card
+             grows, so the control that expanded the chart is where you left it. -->
         <button
           type="button"
           class="history-toggle"
@@ -262,10 +272,6 @@
           <span class="caret" class:open={showBalanceHistory}>▸</span>
           {showBalanceHistory ? 'Hide Historic Balance' : 'Show Historic Balance'}
         </button>
-
-        {#if showBalanceHistory}
-          <BalanceChart balanceHistory={data.balanceHistory} bind:includeOptional />
-        {/if}
       </Card>
     </section>
 
@@ -442,31 +448,43 @@
   }
 
   main {
-    padding: var(--space-2xl) var(--space-md);
+    padding: var(--space-2xl) var(--space-md) var(--space-md);
   }
 
-  .optional-toggle {
-    margin-top: var(--space-sm);
+  .summary-body {
+    padding: var(--space-lg) var(--space-lg) var(--space-md);
   }
 
+  .summary-heading {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    flex-wrap: wrap;
+  }
+
+  /* Thin footer bar, flush to the card's edges */
   .history-toggle {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: var(--space-sm);
     width: 100%;
-    min-height: 44px;
-    margin-top: var(--space-sm);
-    padding: 0;
+    min-height: 38px;
+    padding: 0 var(--space-lg);
     border: none;
-    background: none;
+    border-top: 1px solid var(--color-border);
+    /* Matches the card's radius so it does not square off the bottom */
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    background-color: var(--color-bg-secondary);
     color: var(--color-text-secondary);
     font-family: inherit;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     font-weight: 600;
     cursor: pointer;
   }
 
   .history-toggle:hover {
+    background-color: var(--color-bg-tertiary);
     color: var(--color-text-primary);
   }
 
@@ -534,9 +552,14 @@
     color: var(--color-success);
   }
 
-  .expenses-grid-section,
   .members-section {
     margin-bottom: var(--space-2xl);
+  }
+
+  /* No bottom margin: the grid is the last thing on the page for most users,
+     and ExpenseGrid already carries its own spacing. */
+  .expenses-grid-section {
+    margin-bottom: 0;
   }
 
   .expenses-grid-section h2,
@@ -673,6 +696,18 @@
   }
 
   @media (max-width: 767px) {
+    main {
+      padding: var(--space-lg) var(--space-md) var(--space-sm);
+    }
+
+    .summary-body {
+      padding: var(--space-md) var(--space-md) var(--space-sm);
+    }
+
+    .summary-heading {
+      gap: var(--space-sm);
+    }
+
     /* Stack the header so the actions get real width. The Split the Cost CTA
        used to live inside the horizontally scrolling grid as a ~110px cell at
        0.7rem, which could be scrolled off screen entirely. */

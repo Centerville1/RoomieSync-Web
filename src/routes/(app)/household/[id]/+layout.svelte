@@ -11,6 +11,17 @@
   let showInviteModal = $state(false);
   let showSettingsModal = $state(false);
 
+  // Measured so the sticky header can offset the banner out of view exactly,
+  // rather than hardcoding a height that changes with the breakpoint.
+  let bannerHeight = $state(0);
+
+  // Nobody else here yet and nothing pending: inviting is the only useful thing
+  // an admin can do, so it earns a full CTA. After that it shrinks to a link
+  // beside the member count.
+  const isNewHousehold = $derived(
+    data.members.length <= 1 && (data.pendingInvites?.length ?? 0) === 0
+  );
+
   const basePath = $derived(`/household/${data.household.id}`);
   const currentPath = $derived(page.url.pathname);
 
@@ -38,9 +49,13 @@
   {/if}
 
   <!-- Household Header -->
-  <header class="household-header">
+  <header class="household-header" style="--banner-height: {bannerHeight}px">
     {#if data.household.bannerUrl}
-      <div class="banner" style="background-image: url({data.household.bannerUrl})"></div>
+      <div
+        class="banner"
+        style="background-image: url({data.household.bannerUrl})"
+        bind:clientHeight={bannerHeight}
+      ></div>
     {/if}
     <div class="header-content container">
       {#if data.household.imageUrl}
@@ -48,13 +63,22 @@
       {/if}
       <div class="header-info">
         <h1>{data.household.name}</h1>
-        <p>{data.members.length} {data.members.length === 1 ? 'member' : 'members'}</p>
+        <p class="member-line">
+          <span>{data.members.length} {data.members.length === 1 ? 'member' : 'members'}</span>
+          {#if data.userRole === 'admin' && !isNewHousehold}
+            <button type="button" class="invite-link" onclick={() => (showInviteModal = true)}>
+              + Invite
+            </button>
+          {/if}
+        </p>
       </div>
       {#if data.userRole === 'admin'}
         <div class="header-actions">
-          <Button variant="secondary" size="lg" on:click={() => (showInviteModal = true)}
-            >Invite Members</Button
-          >
+          {#if isNewHousehold}
+            <Button variant="primary" size="lg" on:click={() => (showInviteModal = true)}
+              >Invite Members</Button
+            >
+          {/if}
           <button
             type="button"
             class="settings-btn"
@@ -79,40 +103,28 @@
       {/if}
     </div>
 
-    <!-- Sticky strip: household name plus tabs, so both stay reachable while
-         scrolling a long expense list. Offset below the app navbar, which is
-         itself sticky. -->
-    <div class="sticky-strip">
-      <div class="strip-name container">
-        {#if data.household.imageUrl}
-          <img src={data.household.imageUrl} alt="" class="strip-avatar" />
-        {/if}
-        <span class="strip-title">{data.household.name}</span>
-      </div>
-
-      <!-- Tab bar -->
-      <nav class="tabs container" aria-label="Household sections">
-        <a
-          href={basePath}
-          class="tab"
-          class:active={isExpensesTab}
-          aria-current={isExpensesTab ? 'page' : undefined}
-        >
-          Expenses
-        </a>
-        <a
-          href="{basePath}/shopping"
-          class="tab"
-          class:active={isShoppingTab}
-          aria-current={isShoppingTab ? 'page' : undefined}
-        >
-          Shopping List
-          <span class="tab-count" class:empty={data.openShoppingItems === 0}>
-            {data.openShoppingItems}
-          </span>
-        </a>
-      </nav>
-    </div>
+    <!-- Tab bar -->
+    <nav class="tabs container" aria-label="Household sections">
+      <a
+        href={basePath}
+        class="tab"
+        class:active={isExpensesTab}
+        aria-current={isExpensesTab ? 'page' : undefined}
+      >
+        Expenses
+      </a>
+      <a
+        href="{basePath}/shopping"
+        class="tab"
+        class:active={isShoppingTab}
+        aria-current={isShoppingTab ? 'page' : undefined}
+      >
+        Shopping List
+        <span class="tab-count" class:empty={data.openShoppingItems === 0}>
+          {data.openShoppingItems}
+        </span>
+      </a>
+    </nav>
   </header>
 
   {@render children()}
@@ -163,7 +175,19 @@
   .household-header {
     background-color: var(--color-bg-primary);
     border-bottom: 1px solid var(--color-border);
-    position: relative;
+  }
+
+  /* The header sticks as a whole: a sticky child cannot escape its parent, and
+     this header is only as tall as its content, so sticking .header-content
+     alone did nothing once the header scrolled past.
+     The banner is allowed to scroll out of view by offsetting upward by its own
+     height, which keeps the name, member count and tabs pinned without the
+     banner eating a phone screen. --navbar-height is measured by Header.svelte
+     so the offset cannot drift. */
+  .household-header {
+    position: sticky;
+    top: calc(var(--navbar-height, 5.5rem) - var(--banner-height, 0px));
+    z-index: 40;
   }
 
   .banner {
@@ -207,6 +231,31 @@
     color: var(--color-text-secondary);
   }
 
+  .member-line {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+  }
+
+  /* Small once the household is established: still reachable, no longer a CTA */
+  .invite-link {
+    padding: 2px var(--space-sm);
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: none;
+    color: var(--color-text-secondary);
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .invite-link:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+
   .header-actions {
     display: flex;
     gap: var(--space-md);
@@ -232,39 +281,6 @@
     background-color: var(--color-bg-tertiary);
     color: var(--color-text-primary);
     border-color: var(--color-text-tertiary);
-  }
-
-  .sticky-strip {
-    position: sticky;
-    /* Sits directly under the app navbar, whose height Header.svelte measures */
-    top: var(--navbar-height, 5.5rem);
-    z-index: 50;
-    background-color: var(--color-bg-primary);
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  .strip-name {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    padding: var(--space-sm) var(--space-xl) 0;
-  }
-
-  .strip-avatar {
-    width: 1.75rem;
-    height: 1.75rem;
-    border-radius: var(--radius-sm);
-    object-fit: cover;
-    flex-shrink: 0;
-  }
-
-  .strip-title {
-    font-size: 1.05rem;
-    font-weight: 700;
-    color: var(--color-text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   /* Tab bar */
@@ -377,14 +393,6 @@
     .tabs {
       padding: 0 var(--space-sm);
       gap: 2px;
-    }
-
-    .strip-name {
-      padding: var(--space-xs) var(--space-md) 0;
-    }
-
-    .strip-title {
-      font-size: 0.95rem;
     }
 
     /* Split the width evenly so both tabs are full-size touch targets */
