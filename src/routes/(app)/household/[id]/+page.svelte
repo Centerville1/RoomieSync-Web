@@ -232,6 +232,15 @@
 
 <div class="tab-content">
   <main class="container">
+    <!-- Household info first: reference material, separate from expenses -->
+    <HouseholdInfoCard
+      info={data.household.info}
+      householdId={data.household.id}
+      isAdmin={data.userRole === 'admin'}
+    />
+
+    <h2 class="section-title">Expenses</h2>
+
     <!-- Summary Dashboard -->
     <section class="summary-dashboard dashboard-row">
       <!-- padding: none so the toggle can sit flush as a footer bar -->
@@ -274,18 +283,11 @@
           {showBalanceHistory ? 'Hide Historic Balance' : 'Show Historic Balance'}
         </button>
       </Card>
-
-      <HouseholdInfoCard
-        info={data.household.info}
-        householdId={data.household.id}
-        isAdmin={data.userRole === 'admin'}
-      />
     </section>
 
     <!-- Expenses Grid Section -->
     <section class="expenses-grid-section">
       <div class="expenses-header">
-        <h2>Expenses</h2>
         <div class="expenses-actions">
           <div class="primary-cta">
             <Button variant="success" size="sm" on:click={() => (showSplitCostModal = true)}>
@@ -505,19 +507,15 @@
     transform: rotate(90deg);
   }
 
-  /* Balance and info sit side by side once there is room, and the grid's
-     stretch alignment makes them equal height without measuring anything. */
+  .section-title {
+    margin: var(--space-xl) 0 var(--space-md);
+    color: var(--color-text-primary);
+  }
+
   .dashboard-row {
     display: grid;
     grid-template-columns: 1fr;
     gap: var(--space-md);
-    align-items: stretch;
-  }
-
-  @media (min-width: 1024px) {
-    .dashboard-row {
-      grid-template-columns: 1fr 1fr;
-    }
   }
 
   /* Cards must fill their grid cell for the equal-height alignment to show */
@@ -594,11 +592,15 @@
     margin-bottom: 0;
   }
 
-  .expenses-grid-section h2,
   .members-section h2 {
     margin: 0 0 var(--space-lg) 0;
     font-size: 1.5rem;
     color: var(--color-text-primary);
+  }
+
+  /* Heads both the balance card and the grid, since the balance is expense data */
+  .section-title {
+    font-size: 1.5rem;
   }
 
   .expenses-header {
@@ -658,10 +660,6 @@
   .expenses-header :global(.btn) {
     flex-shrink: 0;
     align-self: center;
-  }
-
-  .expenses-header h2 {
-    margin: 0 0 var(--space-xs) 0;
   }
 
   .pay-selected-bar {
@@ -728,12 +726,62 @@
   }
 
   @media (max-width: 767px) {
+    /* Scaled down across the board. At full size the info card, balance card
+       and sticky header filled the viewport before Split the Cost came into
+       reach, so everything above the grid gets tighter type and spacing. */
     main {
-      padding: var(--space-lg) var(--space-md) var(--space-sm);
+      padding: var(--space-sm) var(--space-sm) var(--space-sm);
+    }
+
+    .section-title {
+      font-size: 1.15rem;
+      margin: var(--space-lg) 0 var(--space-sm);
     }
 
     .summary-body {
-      padding: var(--space-md) var(--space-md) var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+    }
+
+    .dashboard-row {
+      gap: var(--space-sm);
+    }
+
+    .summary-header {
+      gap: var(--space-xs);
+    }
+
+    .summary-heading {
+      gap: var(--space-sm);
+    }
+
+    .summary-title {
+      font-size: 0.9rem;
+    }
+
+    .summary-label {
+      font-size: 0.62rem;
+    }
+
+    .summary-amount {
+      font-size: 1.15rem;
+    }
+
+    .summary-totals {
+      gap: var(--space-md);
+    }
+
+    .history-toggle {
+      min-height: 32px;
+      font-size: 0.78rem;
+    }
+
+    /* The CTA stays large: it is the one thing that should not shrink */
+    .expenses-header {
+      gap: var(--space-sm);
+    }
+
+    .expenses-actions {
+      gap: var(--space-md);
     }
 
     .summary-heading {

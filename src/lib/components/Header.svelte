@@ -76,7 +76,8 @@
   .navbar {
     background: var(--color-bg-primary);
     border-bottom: 1px solid var(--color-border);
-    padding: var(--space-md) 0;
+    /* Sticky, so its height is subtracted from every screen for good */
+    padding: var(--space-sm) 0;
     position: sticky;
     top: 0;
     z-index: 100;
@@ -105,7 +106,7 @@
   }
 
   .logo-icon {
-    height: 3.5rem;
+    height: 2.25rem;
   }
 
   .logo {
@@ -113,7 +114,7 @@
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-    font-size: 1.5rem;
+    font-size: 1.25rem;
     font-weight: 700;
     margin: 0;
   }
@@ -149,13 +150,37 @@
     display: block;
   }
 
-  @media (max-width: 640px) {
+  @media (max-width: 767px) {
     .welcome {
       display: none;
     }
 
     .logo {
       display: none;
+    }
+
+    /* The navbar is sticky and the household header sits under it, so every
+       pixel here pushes the expenses CTA further down. */
+    .navbar {
+      padding: var(--space-xs) 0;
+    }
+
+    .logo-icon {
+      height: 2.25rem;
+    }
+
+    .nav-links {
+      gap: var(--space-sm);
+    }
+
+    .nav-links :global(.btn) {
+      padding: var(--space-xs) var(--space-sm);
+      font-size: 0.85rem;
+    }
+
+    .back-link :global(.btn) {
+      padding: var(--space-xs) var(--space-sm);
+      font-size: 0.85rem;
     }
   }
 </style>

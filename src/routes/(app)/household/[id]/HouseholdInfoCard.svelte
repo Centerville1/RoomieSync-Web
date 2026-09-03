@@ -81,7 +81,7 @@
             name="info"
             rows="8"
             maxlength="5000"
-            placeholder={'Wifi: network / password\nBins go out Tuesday night\nLandlord: 555-0143'}
+            placeholder="Wifi, bin days, house rules…"
           ></textarea>
           <div class="form-actions">
             <span class="char-count">{draft.length}/5000</span>
@@ -97,10 +97,7 @@
         <!-- pre-wrap keeps the admin's line breaks without interpreting markup -->
         <div class="info-body" bind:this={bodyEl}>{info}</div>
       {:else}
-        <p class="info-empty">
-          Add wifi details, bin days, house rules or anything else the household should have to
-          hand.
-        </p>
+        <p class="info-empty">Anything the household should have to hand.</p>
       {/if}
     </div>
 
@@ -276,13 +273,35 @@
 
   @media (max-width: 767px) {
     .info-card {
-      padding: var(--space-md) var(--space-md) var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+      gap: var(--space-xs);
     }
 
-    /* Smaller on mobile, where it sits below the balance card */
+    .info-title {
+      font-size: 0.9rem;
+    }
+
+    .edit-btn {
+      min-height: 28px;
+      padding: 0 var(--space-sm);
+      font-size: 0.78rem;
+    }
+
+    /* Tighter clamp: about three lines, enough to see there is something
+       without pushing the expenses CTA off screen. */
     .info-body {
-      max-height: var(--info-max-height-mobile, 5.5rem);
-      font-size: 0.88rem;
+      max-height: var(--info-max-height-mobile, 4.2rem);
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+
+    .info-empty {
+      font-size: 0.8rem;
+    }
+
+    .expand-bar {
+      min-height: 32px;
+      font-size: 0.78rem;
     }
   }
 </style>

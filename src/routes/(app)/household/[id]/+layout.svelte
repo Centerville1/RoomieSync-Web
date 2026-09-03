@@ -199,27 +199,27 @@
 
   .banner {
     width: 100%;
-    height: 12rem;
+    height: 8rem;
     background-size: cover;
     background-position: center;
     background-color: var(--color-bg-tertiary);
   }
 
   .header-content {
-    padding: var(--space-xl) var(--space-xl) var(--space-md);
+    padding: var(--space-md) var(--space-xl) var(--space-sm);
     display: flex;
-    gap: var(--space-lg);
+    gap: var(--space-md);
     align-items: center;
     flex-wrap: wrap;
   }
 
   .household-avatar {
-    width: 6rem;
-    height: 6rem;
+    width: 3rem;
+    height: 3rem;
     border-radius: var(--radius-lg);
     object-fit: cover;
     background-color: var(--color-bg-tertiary);
-    border: 4px solid var(--color-bg-primary);
+    border: 2px solid var(--color-bg-primary);
   }
 
   .header-info {
@@ -228,14 +228,15 @@
   }
 
   .header-info h1 {
-    margin: 0 0 var(--space-xs) 0;
-    font-size: 2rem;
+    margin: 0 0 2px 0;
+    font-size: 1.4rem;
     color: var(--color-text-primary);
   }
 
   .header-info p {
     margin: 0;
     color: var(--color-text-secondary);
+    font-size: 0.9rem;
   }
 
   .member-line {
@@ -325,13 +326,13 @@
      stray shape floating in the header instead of a tab. */
   .tab {
     position: relative;
-    padding: var(--space-md) var(--space-xs);
+    padding: var(--space-sm) var(--space-xs);
     /* Comfortable touch target on mobile */
-    min-height: 48px;
+    min-height: 42px;
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-    font-size: 1.05rem;
+    font-size: 0.95rem;
     font-weight: 600;
     color: var(--color-text-secondary);
     text-decoration: none;
@@ -380,13 +381,13 @@
     }
 
     .header-content {
-      padding: var(--space-md) var(--space-md) var(--space-sm);
-      gap: var(--space-md);
+      padding: var(--space-sm) var(--space-md) var(--space-xs);
+      gap: var(--space-sm);
     }
 
     .household-avatar {
-      width: 3.5rem;
-      height: 3.5rem;
+      width: 2.5rem;
+      height: 2.5rem;
       border-width: 2px;
     }
 
@@ -395,11 +396,22 @@
     }
 
     .header-info h1 {
-      font-size: 1.35rem;
+      font-size: 1.1rem;
     }
 
     .header-info p {
-      font-size: 0.85rem;
+      font-size: 0.78rem;
+    }
+
+    .invite-link {
+      min-height: 28px;
+      padding: 0 var(--space-sm);
+      font-size: 0.75rem;
+    }
+
+    .settings-btn {
+      width: 32px;
+      height: 32px;
     }
 
     .header-actions.has-cta {
@@ -420,10 +432,17 @@
     .tab {
       flex: 1;
       justify-content: center;
-      padding: var(--space-md) var(--space-sm);
-      font-size: 0.98rem;
+      padding: var(--space-sm) var(--space-sm);
+      min-height: 40px;
+      font-size: 0.88rem;
       /* Squared off, separated by a hairline instead of a gap */
       border-right: 1px solid var(--color-border);
+    }
+
+    .tab-count {
+      min-width: 1.25rem;
+      height: 1.25rem;
+      font-size: 0.7rem;
     }
 
     .tab:last-child {
