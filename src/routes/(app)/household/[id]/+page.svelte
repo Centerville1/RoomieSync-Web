@@ -14,6 +14,7 @@
   import NudgeModal from './NudgeModal.svelte';
   import ExpenseGrid from './ExpenseGrid.svelte';
   import BalanceChart from './BalanceChart.svelte';
+  import HouseholdInfoCard from './HouseholdInfoCard.svelte';
   import { onMount } from 'svelte';
   import { page } from '$app/state';
 
@@ -232,7 +233,7 @@
 <div class="tab-content">
   <main class="container">
     <!-- Summary Dashboard -->
-    <section class="summary-dashboard">
+    <section class="summary-dashboard dashboard-row">
       <!-- padding: none so the toggle can sit flush as a footer bar -->
       <Card padding="none">
         <div class="summary-body">
@@ -273,6 +274,12 @@
           {showBalanceHistory ? 'Hide Historic Balance' : 'Show Historic Balance'}
         </button>
       </Card>
+
+      <HouseholdInfoCard
+        info={data.household.info}
+        householdId={data.household.id}
+        isAdmin={data.userRole === 'admin'}
+      />
     </section>
 
     <!-- Expenses Grid Section -->
@@ -496,6 +503,31 @@
 
   .caret.open {
     transform: rotate(90deg);
+  }
+
+  /* Balance and info sit side by side once there is room, and the grid's
+     stretch alignment makes them equal height without measuring anything. */
+  .dashboard-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-md);
+    align-items: stretch;
+  }
+
+  @media (min-width: 1024px) {
+    .dashboard-row {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  /* Cards must fill their grid cell for the equal-height alignment to show */
+  .dashboard-row > :global(.card) {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .dashboard-row > :global(.card) > :global(*:first-child) {
+    flex: 1;
   }
 
   /* Summary Dashboard */

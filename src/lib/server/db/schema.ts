@@ -33,6 +33,11 @@ export const households = sqliteTable('households', {
   bannerUrl: text('banner_url'),
   primaryColor: text('primary_color'),
   secondaryColor: text('secondary_color'),
+  // Free-form notes an admin sets for the household: wifi, bin days, house
+  // rules. Plain text, rendered with line breaks preserved and never as markup.
+  // NULL or empty means the card is hidden entirely.
+  info: text('info'),
+  infoUpdatedAt: integer('info_updated_at', { mode: 'timestamp' }),
   // Archived households drop out of the main list on the homepage but stay
   // fully usable. NULL means active, so state and timestamp cannot disagree.
   archivedAt: integer('archived_at', { mode: 'timestamp' }),

@@ -310,7 +310,7 @@
   /* Tab bar */
   .tabs {
     display: flex;
-    gap: var(--space-sm);
+    gap: var(--space-xl);
     padding: 0 var(--space-xl);
     /* Scrollable rather than wrapping if more tabs are added later */
     overflow-x: auto;
@@ -321,9 +321,11 @@
     display: none;
   }
 
+  /* A plain underline rather than a rounded, bordered box. The box read as a
+     stray shape floating in the header instead of a tab. */
   .tab {
     position: relative;
-    padding: var(--space-md) var(--space-lg);
+    padding: var(--space-md) var(--space-xs);
     /* Comfortable touch target on mobile */
     min-height: 48px;
     display: flex;
@@ -334,26 +336,20 @@
     color: var(--color-text-secondary);
     text-decoration: none;
     white-space: nowrap;
-    border: 1px solid transparent;
-    border-bottom: none;
-    border-radius: var(--radius-md) var(--radius-md) 0 0;
-    /* Sits on the header's bottom border so the active tab merges with the page */
-    margin-bottom: -1px;
+    border-bottom: 3px solid transparent;
     transition:
       color 0.15s ease,
-      background-color 0.15s ease;
+      border-color 0.15s ease;
   }
 
   .tab:hover:not(.active) {
     color: var(--color-text-primary);
-    background-color: var(--color-bg-secondary);
+    border-bottom-color: var(--color-border);
   }
 
   .tab.active {
     color: var(--color-primary);
-    background-color: var(--color-bg-secondary);
-    border-color: var(--color-border);
-    box-shadow: inset 0 3px 0 var(--color-primary);
+    border-bottom-color: var(--color-primary);
   }
 
   /* Count chip — always rendered, muted at zero */
@@ -414,17 +410,24 @@
       flex: 1;
     }
 
+    /* Edge to edge, no side gaps: the tabs read as one squared-off control
+       rather than links floating in the header. */
     .tabs {
-      padding: 0 var(--space-sm);
-      gap: 2px;
+      padding: 0;
+      gap: 0;
     }
 
-    /* Split the width evenly so both tabs are full-size touch targets */
     .tab {
       flex: 1;
       justify-content: center;
       padding: var(--space-md) var(--space-sm);
       font-size: 0.98rem;
+      /* Squared off, separated by a hairline instead of a gap */
+      border-right: 1px solid var(--color-border);
+    }
+
+    .tab:last-child {
+      border-right: none;
     }
   }
 </style>

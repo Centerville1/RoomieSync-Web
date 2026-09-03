@@ -1464,6 +1464,37 @@ export const actions: Actions = {
   },
 
   /**
+   * Set or clear the household info card.
+   *
+   * Plain text: the client renders it with white-space: pre-wrap so line breaks
+   * survive, and never as markup, so nothing an admin types can inject.
+   */
+  setHouseholdInfo: async ({ request, locals, params }) => {
+    const householdId = params.id;
+    await requireAdmin(locals, householdId, 'edit the household info');
+
+    const formData = await request.formData();
+    const raw = (formData.get('info') as string) ?? '';
+    const info = raw.trim();
+
+    if (info.length > 5000) {
+      return fail(400, { error: 'Household info must be 5000 characters or less' });
+    }
+
+    // Empty clears it, which hides the card again rather than leaving a blank one
+    await db
+      .update(households)
+      .set({
+        info: info.length > 0 ? info : null,
+        infoUpdatedAt: info.length > 0 ? new Date() : null,
+        updatedAt: new Date()
+      })
+      .where(eq(households.id, householdId));
+
+    return { success: true };
+  },
+
+  /**
    * Archive or restore the household.
    *
    * A softer option than deletion, which was previously the only way for an
