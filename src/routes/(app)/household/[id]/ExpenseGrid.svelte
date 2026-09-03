@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { shareFor } from '$lib/splits';
   import { onMount } from 'svelte';
 
   type Member = {
@@ -294,8 +295,10 @@
     }).format(new Date(date));
   }
 
-  function getUserShare(expense: Expense): number {
-    return expense.amount / expense.splits.length;
+  function getUserShare(expense: Expense, memberId: string): number {
+    // Each cell belongs to one member, so it shows that member's own share.
+    // With uneven splits these differ from person to person.
+    return shareFor(expense, memberId);
   }
 
   function getPaymentStatus(
@@ -585,7 +588,7 @@
                       <span class="status-icon paid">✓</span>
                       <span class="paid-info you-paid">
                         <span class="text-label">You paid </span>{formatCurrency(
-                          getUserShare(expense)
+                          getUserShare(expense, member.id)
                         )}
                         {#if paidAt}
                           <span class="paid-date">{formatShortDateTime(paidAt)}</span>
@@ -598,14 +601,14 @@
                       {#if isMyExpense && paidAt}
                         <span class="paid-info">
                           <span class="text-label">Paid you </span>{formatCurrency(
-                            getUserShare(expense)
+                            getUserShare(expense, member.id)
                           )}
                           <span class="paid-date">{formatShortDateTime(paidAt)}</span>
                         </span>
                       {:else if isMyColumn && paidAt}
                         <span class="paid-info you-paid">
                           <span class="text-label">You paid </span>{formatCurrency(
-                            getUserShare(expense)
+                            getUserShare(expense, member.id)
                           )}
                           <span class="paid-date">{formatShortDateTime(paidAt)}</span>
                         </span>
@@ -618,7 +621,7 @@
                       <span class="status-icon optional" title="Optional - Unpaid">?</span>
                       <span class="optional-amount"
                         ><span class="optional-badge">Optional</span>
-                        {formatCurrency(getUserShare(expense))}</span
+                        {formatCurrency(getUserShare(expense, member.id))}</span
                       >
                     </div>
                   {:else}
@@ -633,13 +636,13 @@
                       {#if isMyExpense}
                         <span class="owes-info"
                           ><span class="text-label">Owes you </span>{formatCurrency(
-                            getUserShare(expense)
+                            getUserShare(expense, member.id)
                           )}</span
                         >
                       {:else if isMyColumn}
                         <span class="you-owe-info"
                           ><span class="text-label">You owe </span>{formatCurrency(
-                            getUserShare(expense)
+                            getUserShare(expense, member.id)
                           )}</span
                         >
                       {/if}

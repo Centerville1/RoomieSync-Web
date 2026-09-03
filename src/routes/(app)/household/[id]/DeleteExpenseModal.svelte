@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { shareFor } from '$lib/splits';
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
   import { enhance } from '$app/forms';
@@ -59,8 +60,7 @@
   // Calculate refund amounts per user
   const refundAmounts = $derived(() => {
     if (!expense) return [];
-    const splitCount = expense.splits.length;
-    const shareAmount = expense.amount / splitCount;
+    const shareAmount = shareFor(expense, currentUserId);
 
     return paidSplits().map((split) => ({
       userId: split.userId,

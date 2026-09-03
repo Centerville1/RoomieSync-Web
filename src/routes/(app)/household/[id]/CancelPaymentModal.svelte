@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { shareFor } from '$lib/splits';
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
   import { enhance } from '$app/forms';
@@ -62,7 +63,7 @@
   }
 
   // Calculate user's share of this expense
-  const userShare = $derived(expense ? expense.amount / expense.splits.length : 0);
+  const userShare = $derived(expense ? shareFor(expense, currentUserId) : 0);
 
   // Get the user's split to show when they paid
   const userSplit = $derived(expense?.splits.find((s) => s.userId === currentUserId));

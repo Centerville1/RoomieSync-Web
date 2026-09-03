@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { previewEvenShare } from '$lib/splits';
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
@@ -66,9 +67,10 @@
   let originalSplitCount = $derived(originalSplitMemberIds.length + 1);
   let newSplitCount = $derived(selectedMembers.length + 1);
 
-  // Calculate shares
-  let originalShare = $derived(expense ? expense.amount / originalSplitCount : 0);
-  let newShare = $derived(expense ? expense.amount / newSplitCount : 0);
+  // Forecasts of what an even split would look like, not stored shares: the
+  // question here is "what would each person owe if I change who is included".
+  let originalShare = $derived(expense ? previewEvenShare(expense.amount, originalSplitCount) : 0);
+  let newShare = $derived(expense ? previewEvenShare(expense.amount, newSplitCount) : 0);
   let shareDifference = $derived(newShare - originalShare);
 
   // Check if splits have changed

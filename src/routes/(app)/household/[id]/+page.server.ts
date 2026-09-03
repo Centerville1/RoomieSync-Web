@@ -165,6 +165,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
       creatorId: expenses.creatorId,
       isOptional: expenses.isOptional,
       splitUserId: expenseSplits.userId,
+      splitAmount: expenseSplits.amount,
       hasPaid: expenseSplits.hasPaid,
       paidAt: expenseSplits.paidAt
     })
@@ -186,8 +187,10 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
   const processedExpenses = new Set<string>();
 
   for (const row of balanceHistoryData) {
+    // The stored share, falling back to an even split only for rows written
+    // before per-split amounts existed.
     const splitCount = balanceHistoryData.filter((r) => r.expenseId === row.expenseId).length;
-    const share = row.expenseAmount / splitCount;
+    const share = row.splitAmount ?? (splitCount > 0 ? row.expenseAmount / splitCount : 0);
 
     // When expense is created: if I'm in the split (not creator), I owe money
     // If I'm the creator and others are in the split, they owe me
@@ -199,10 +202,15 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
       const isMyExpense = row.creatorId === currentUserId;
 
       if (isMyExpense) {
-        // Others owe me their shares
+        // Others owe me their shares. Each person's own amount, not this row's
+        // share counted once per person: with uneven splits those differ.
         const othersOwedTotal = expenseSplitsForThis
           .filter((s) => s.splitUserId !== currentUserId)
-          .reduce((sum) => sum + share, 0);
+          .reduce(
+            (sum, s) =>
+              sum + (s.splitAmount ?? (splitCount > 0 ? row.expenseAmount / splitCount : 0)),
+            0
+          );
         if (othersOwedTotal > 0) {
           balanceEvents.push({
             date: row.expenseCreatedAt,
@@ -270,6 +278,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
     .select({
       expense: expenses,
       splitUserId: expenseSplits.userId,
+      splitAmount: expenseSplits.amount,
       splitHasPaid: expenseSplits.hasPaid,
       splitPaidAt: expenseSplits.paidAt
     })
@@ -299,7 +308,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
       isOptional: boolean;
       creatorId: string;
       createdAt: Date;
-      splits: { userId: string; hasPaid: boolean; paidAt: Date | null }[];
+      splits: { userId: string; amount: number | null; hasPaid: boolean; paidAt: Date | null }[];
     }
   >();
 
@@ -317,6 +326,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
     }
     unpaidMap.get(row.expense.id)!.splits.push({
       userId: row.splitUserId,
+      amount: row.splitAmount,
       hasPaid: row.splitHasPaid,
       paidAt: row.splitPaidAt
     });
@@ -331,6 +341,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
       expense: expenses,
       splitId: expenseSplits.id,
       splitUserId: expenseSplits.userId,
+      splitAmount: expenseSplits.amount,
       splitHasPaid: expenseSplits.hasPaid,
       splitPaidAt: expenseSplits.paidAt
     })
@@ -348,7 +359,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
       isOptional: boolean;
       creatorId: string;
       createdAt: Date;
-      splits: { userId: string; hasPaid: boolean; paidAt: Date | null }[];
+      splits: { userId: string; amount: number | null; hasPaid: boolean; paidAt: Date | null }[];
     }
   >();
 
@@ -366,6 +377,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
     }
     reverseExpenseMap.get(row.expense.id)!.splits.push({
       userId: row.splitUserId,
+      amount: row.splitAmount,
       hasPaid: row.splitHasPaid,
       paidAt: row.splitPaidAt
     });
