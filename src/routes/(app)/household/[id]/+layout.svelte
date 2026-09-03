@@ -22,6 +22,8 @@
     data.members.length <= 1 && (data.pendingInvites?.length ?? 0) === 0
   );
 
+  const pendingCount = $derived(data.pendingInvites?.length ?? 0);
+
   const basePath = $derived(`/household/${data.household.id}`);
   const currentPath = $derived(page.url.pathname);
 
@@ -68,6 +70,11 @@
           {#if data.userRole === 'admin' && !isNewHousehold}
             <button type="button" class="invite-link" onclick={() => (showInviteModal = true)}>
               + Invite Members
+              {#if pendingCount > 0}
+                <span class="pending-badge">
+                  {pendingCount} pending
+                </span>
+              {/if}
             </button>
           {/if}
         </p>
@@ -259,6 +266,18 @@
   .invite-link:hover {
     border-color: var(--color-primary);
     color: var(--color-primary);
+  }
+
+  /* Outstanding invites are worth surfacing without opening the modal */
+  .pending-badge {
+    margin-left: var(--space-xs);
+    padding: 1px 0.4rem;
+    border-radius: 999px;
+    background-color: color-mix(in srgb, var(--color-warning) 22%, transparent);
+    color: var(--color-warning);
+    font-size: 0.72rem;
+    font-weight: 700;
+    white-space: nowrap;
   }
 
   .header-actions {
