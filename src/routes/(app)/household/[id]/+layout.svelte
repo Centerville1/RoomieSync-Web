@@ -118,7 +118,7 @@
         class:active={isExpensesTab}
         aria-current={isExpensesTab ? 'page' : undefined}
       >
-        Expenses
+        Home
       </a>
       <a
         href="{basePath}/shopping"
