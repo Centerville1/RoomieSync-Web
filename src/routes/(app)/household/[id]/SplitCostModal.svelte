@@ -25,8 +25,11 @@
   let isOptional = $state(false);
   // Set false by the split editor while the pinned amounts cannot reconcile
   let splitValid = $state(true);
+  // True while the amount text cannot be resolved: typing "12" then "+" leaves
+  // the last good value in `amount`, so checking amount > 0 is not enough.
+  let amountInvalid = $state(false);
 
-  const canSubmit = $derived(amount > 0 && splitValid);
+  const canSubmit = $derived(amount > 0 && !amountInvalid && splitValid);
 
   function handleClose() {
     open = false;

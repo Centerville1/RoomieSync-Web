@@ -12,6 +12,7 @@
 
   type Split = {
     userId: string;
+    amount: number | null;
     hasPaid: boolean;
     paidAt: Date | null;
   };
@@ -60,12 +61,13 @@
   // Calculate refund amounts per user
   const refundAmounts = $derived(() => {
     if (!expense) return [];
-    const shareAmount = shareFor(expense, currentUserId);
-
+    // Each person's own share. paidSplits excludes the creator, and only the
+    // creator can delete, so using the current user's share here would show an
+    // amount belonging to nobody in the list.
     return paidSplits().map((split) => ({
       userId: split.userId,
       name: getMemberDisplayName(split.userId),
-      amount: shareAmount
+      amount: shareFor(expense, split.userId)
     }));
   });
 

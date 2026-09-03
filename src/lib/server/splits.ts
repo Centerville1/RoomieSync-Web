@@ -15,6 +15,8 @@ export {
   isUnpaidBy,
   unpaidTotalFor,
   owedByCreator,
-  previewEvenShare
+  previewEvenShare,
+  parseAmount,
+  MAX_EXPENSE_AMOUNT
 } from '$lib/splits';
 export type { SplitInput, SplitResult } from '$lib/splits';

@@ -12,6 +12,7 @@
 
   type Split = {
     userId: string;
+    amount: number | null;
     hasPaid: boolean;
   };
 

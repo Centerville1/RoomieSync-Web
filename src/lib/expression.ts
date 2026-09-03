@@ -64,8 +64,11 @@ function tokenize(input: string): Token[] | null {
  * unary  := '-' unary | factor
  * factor := number | '(' expr ')'
  */
+const MAX_DEPTH = 32;
+
 function parse(tokens: Token[]): number | null {
   let pos = 0;
+  let depth = 0;
 
   const peek = () => tokens[pos];
 
@@ -102,8 +105,11 @@ function parse(tokens: Token[]): number | null {
   function unary(): number | null {
     const t = peek();
     if (t?.type === 'op' && t.value === '-') {
+      if (depth >= MAX_DEPTH) return null;
+      depth++;
       pos++;
       const v = unary();
+      depth--;
       return v === null ? null : -v;
     }
     return factor();
@@ -117,8 +123,12 @@ function parse(tokens: Token[]): number | null {
       return t.value;
     }
     if (t.type === 'op' && t.value === '(') {
+      // Belt and braces alongside the length cap above
+      if (depth >= MAX_DEPTH) return null;
+      depth++;
       pos++;
       const v = expr();
+      depth--;
       if (v === null) return null;
       const close = peek();
       if (close?.type !== 'op' || close.value !== ')') return null;
@@ -143,6 +153,10 @@ function parse(tokens: Token[]): number | null {
 export function evaluateExpression(input: string): number | null {
   const trimmed = input.trim();
   if (trimmed === '') return null;
+  // An amount is never long. Without a cap, a pasted run of thousands of
+  // parentheses recurses deep enough to throw RangeError out of the $derived
+  // that calls this, breaking the component rather than showing the hint.
+  if (trimmed.length > 100) return null;
 
   // Strip thousands separators and currency symbols before tokenizing: leaving
   // them to be skipped mid-number turned "1,200" into two adjacent numbers.

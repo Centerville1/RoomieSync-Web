@@ -16,7 +16,7 @@ import { sendEmail } from '$lib/server/email';
 import { getHouseholdInviteEmail, getNudgeReminderEmail } from '$lib/server/email/templates';
 import { createInviteSignature } from '$lib/server/invite-signature';
 import { requireAdmin } from '$lib/server/household';
-import { calculateSplits, splitsMatchTotal } from '$lib/server/splits';
+import { calculateSplits, splitsMatchTotal, parseAmount } from '$lib/server/splits';
 
 const PAGE_SIZE = 20;
 
@@ -225,9 +225,14 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
         // Check if I'm in this split
         const myShare = expenseSplitsForThis.find((s) => s.splitUserId === currentUserId);
         if (myShare) {
+          // My own share, not `share`: that comes from whichever row this loop
+          // happens to be on, which may be another participant. With uneven
+          // splits those differ, and the processedExpenses guard means the
+          // first row seen is the only chance to get it right.
+          const mine = myShare.splitAmount ?? (splitCount > 0 ? row.expenseAmount / splitCount : 0);
           balanceEvents.push({
             date: row.expenseCreatedAt,
-            youOweChange: share,
+            youOweChange: mine,
             owedToYouChange: 0,
             isOptional: row.isOptional,
             description: 'Expense created'
@@ -455,14 +460,16 @@ export const actions: Actions = {
     }
 
     const formData = await request.formData();
-    const amount = parseFloat(formData.get('amount') as string);
+    const amount = parseAmount(formData.get('amount'));
     const description = formData.get('description') as string;
     const isOptional = formData.get('isOptional') === 'on';
     const splitWith = formData.getAll('splitWith') as string[];
 
-    // Validate input
-    if (!amount || amount <= 0) {
-      return fail(400, { error: 'Amount must be greater than 0' });
+    // Validate input. parseAmount rejects Infinity, NaN and trailing junk,
+    // which `!amount || amount <= 0` let through: an Infinity amount would
+    // poison every balance SUM in the household.
+    if (amount === null) {
+      return fail(400, { error: 'Enter an amount between 0 and 1,000,000' });
     }
     if (!description || description.trim() === '') {
       return fail(400, { error: 'Description is required' });
@@ -470,9 +477,6 @@ export const actions: Actions = {
     // Note: splitWith can be empty - creator is always included in the split
 
     const currentUserId = locals.user.id;
-
-    // Everyone the expense is divided between, creator included
-    const allSplitUsers = [...new Set([currentUserId, ...splitWith])];
 
     // Per-person amounts posted by the split editor. Only the overridden ones
     // are trusted as intent: the rest are recalculated here so the stored
@@ -484,6 +488,23 @@ export const actions: Actions = {
       const value = parseFloat(postedAmounts[i]);
       if (Number.isFinite(value) && value >= 0) posted.set(id, value);
     });
+
+    // Who the expense is divided between. The split editor posts one row per
+    // participant, which is the authoritative list; splitWith is the older
+    // shape and is still honoured so any caller that sends it keeps working.
+    const requested = postedIds.length > 0 ? postedIds : splitWith;
+
+    // Only real members of this household can be given a share, so a forged id
+    // cannot attach someone else's account to an expense.
+    const memberRows = await db
+      .select({ userId: householdMembers.userId })
+      .from(householdMembers)
+      .where(eq(householdMembers.householdId, householdId));
+    const memberIds = new Set(memberRows.map((m) => m.userId));
+
+    const allSplitUsers = [...new Set([currentUserId, ...requested])].filter((id) =>
+      memberIds.has(id)
+    );
 
     // An amount counts as an override only if it differs from the even share,
     // so an untouched form still divides evenly after any rounding.
@@ -1005,12 +1026,14 @@ export const actions: Actions = {
       (s) => !newSplitUserIds.includes(s.userId) && s.userId !== currentUserId
     );
 
-    // Add new splits
+    // Add new splits. Amount is filled in by the rebalance below, but set it
+    // here too so a row never exists with a null amount even momentarily.
     if (splitsToAdd.length > 0) {
       const newSplits = splitsToAdd.map((userId) => ({
         id: generateId(),
         expenseId,
         userId,
+        amount: 0,
         hasPaid: false,
         paidAt: null
       }));
@@ -1021,6 +1044,31 @@ export const actions: Actions = {
     if (splitsToRemove.length > 0) {
       const idsToRemove = splitsToRemove.map((s) => s.id);
       await db.delete(expenseSplits).where(inArray(expenseSplits.id, idsToRemove));
+    }
+
+    // Rebalance every share over the final membership. Changing who is included
+    // changes what everyone owes, and without this the rows would no longer sum
+    // to the expense: added rows would sit at 0 while the others kept their old
+    // amounts. Existing uneven shares are not preserved, because there is no way
+    // to know how the person editing wants the new total divided.
+    const finalSplits = await db
+      .select({ id: expenseSplits.id, userId: expenseSplits.userId })
+      .from(expenseSplits)
+      .where(eq(expenseSplits.expenseId, expenseId));
+
+    if (finalSplits.length > 0) {
+      const rebalanced = calculateSplits(
+        expense[0].amount,
+        finalSplits.map((sp) => ({ userId: sp.userId })),
+        expense[0].creatorId
+      );
+      const byUser = new Map(rebalanced.map((r) => [r.userId, r.amount]));
+      for (const sp of finalSplits) {
+        await db
+          .update(expenseSplits)
+          .set({ amount: byUser.get(sp.userId) ?? 0 })
+          .where(eq(expenseSplits.id, sp.id));
+      }
     }
 
     return { success: true };
@@ -1112,7 +1160,7 @@ export const actions: Actions = {
 
     const formData = await request.formData();
     const creatorId = formData.get('creatorId') as string;
-    const amount = parseFloat(formData.get('amount') as string);
+    const amount = parseAmount(formData.get('amount'));
     const description = formData.get('description') as string;
     const expenseDateStr = formData.get('expenseDate') as string;
     const isOptional = formData.get('isOptional') === 'on';
@@ -1132,8 +1180,8 @@ export const actions: Actions = {
     if (!creatorId) {
       return fail(400, { error: 'Creator is required' });
     }
-    if (!amount || amount <= 0) {
-      return fail(400, { error: 'Amount must be greater than 0' });
+    if (amount === null) {
+      return fail(400, { error: 'Enter an amount between 0 and 1,000,000' });
     }
     if (!description || description.trim() === '') {
       return fail(400, { error: 'Description is required' });
@@ -1219,10 +1267,21 @@ export const actions: Actions = {
       return null;
     };
 
+    // Amounts are stored, not derived, so an imported expense must set them
+    // too. Leaving them null would feed the legacy even-share fallback with
+    // brand new rows and block making the column NOT NULL later.
+    const importedSplits = calculateSplits(
+      amount,
+      allSplitUsers.map((userId) => ({ userId })),
+      creatorId
+    );
+    const importedByUser = new Map(importedSplits.map((sp) => [sp.userId, sp.amount]));
+
     const splits = allSplitUsers.map((userId) => ({
       id: generateId(),
       expenseId,
       userId,
+      amount: importedByUser.get(userId) ?? 0,
       hasPaid: userId === creatorId || paidMembers.includes(userId),
       paidAt: getPaidAtDate(userId)
     }));
@@ -1327,7 +1386,8 @@ export const actions: Actions = {
     const formData = await request.formData();
     const toUserId = formData.get('toUserId') as string;
     const customMessage = (formData.get('customMessage') as string)?.trim() || null;
-    const amountOwed = parseFloat(formData.get('amountOwed') as string);
+    // Display only, but a NaN or Infinity here would be emailed to someone
+    const amountOwed = parseAmount(formData.get('amountOwed')) ?? 0;
 
     if (!toUserId) {
       return fail(400, { error: 'Recipient is required' });

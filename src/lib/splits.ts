@@ -163,3 +163,25 @@ export function splitsMatchTotal(total: number, amounts: number[]): boolean {
   const sum = amounts.reduce((acc, a) => acc + toCents(a), 0);
   return sum === toCents(total);
 }
+
+/** The largest expense we will accept. Guards against Infinity and typos. */
+export const MAX_EXPENSE_AMOUNT = 1_000_000;
+
+/**
+ * Parse and validate a posted expense amount.
+ *
+ * Returns null when the value is not a usable amount. parseFloat alone is not
+ * enough: it yields Infinity for "1e400", NaN for junk, and 5 for "5abc", and
+ * `!amount || amount <= 0` lets Infinity through. An Infinity amount poisons
+ * every balance SUM in the household.
+ */
+export function parseAmount(raw: FormDataEntryValue | null): number | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (trimmed === '') return null;
+  // Number() rejects trailing garbage where parseFloat silently truncates it
+  const value = Number(trimmed);
+  if (!Number.isFinite(value)) return null;
+  if (value <= 0 || value > MAX_EXPENSE_AMOUNT) return null;
+  return Math.round(value * 100) / 100;
+}

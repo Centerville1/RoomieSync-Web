@@ -12,7 +12,9 @@
     /** Rendered under the field when the entry is not a valid expression */
     error = '',
     /** Shown while the field is focused, e.g. "= 12.00" */
-    showPreview = true
+    showPreview = true,
+    /** True while the text cannot be resolved to an amount. */
+    invalid = $bindable(false)
   }: {
     value?: number;
     name?: string;
@@ -23,6 +25,7 @@
     disabled?: boolean;
     error?: string;
     showPreview?: boolean;
+    invalid?: boolean;
   } = $props();
 
   // What the user typed, which may be an expression like "10 + 0.2*10".
@@ -44,7 +47,11 @@
 
   const evaluated = $derived(evaluateExpression(raw));
   const isExpression = $derived(raw.trim() !== '' && /[+\-*/()]/.test(raw.trim()));
-  const invalid = $derived(raw.trim() !== '' && evaluated === null);
+  const isInvalid = $derived(raw.trim() !== '' && evaluated === null);
+
+  $effect(() => {
+    invalid = isInvalid;
+  });
 
   function commit() {
     focused = false;
@@ -86,7 +93,7 @@
       type="text"
       inputmode="decimal"
       autocomplete="off"
-      class:invalid
+      class:invalid={isInvalid}
       onfocus={onFocus}
       oninput={onInput}
       onblur={commit}
@@ -98,7 +105,7 @@
     <input type="hidden" {name} value={evaluated ?? ''} />
   </div>
 
-  {#if invalid}
+  {#if isInvalid}
     <p class="hint error">That is not a number or a sum we can work out.</p>
   {:else if error}
     <p class="hint error">{error}</p>

@@ -48,7 +48,7 @@
     isOptional: boolean;
     creatorId: string;
     createdAt: Date;
-    splits: { userId: string; hasPaid: boolean; paidAt: Date | null }[];
+    splits: { userId: string; amount: number | null; hasPaid: boolean; paidAt: Date | null }[];
   };
   let selectedExpenseForEdit = $state<Expense | null>(null);
   let selectedExpenseForDelete = $state<Expense | null>(null);
