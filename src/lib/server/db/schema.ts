@@ -91,6 +91,10 @@ export const expenses = sqliteTable('expenses', {
   amount: real('amount').notNull(),
   description: text('description').notNull(),
   isOptional: integer('is_optional', { mode: 'boolean' }).notNull().default(false),
+  // Rent is a label on an ordinary expense, not a separate recurring concept:
+  // it colours the row and drives the Pay Rent banner while the user's own
+  // split is unpaid.
+  isRent: integer('is_rent', { mode: 'boolean' }).notNull().default(false),
   receiptUrl: text('receipt_url'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
@@ -105,6 +109,13 @@ export const expenseSplits = sqliteTable('expense_splits', {
   userId: text('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
+  // What this person owes. Stored per split rather than derived, so an expense
+  // can be divided unevenly. Every read uses this value: deriving it as
+  // amount/count anywhere would silently ignore overrides.
+  //
+  // The splits always sum to the expense amount. Remainder pennies from an
+  // uneven division go to the expense creator, who is already paying up front.
+  amount: real('amount').notNull().default(0),
   hasPaid: integer('has_paid', { mode: 'boolean' }).notNull().default(false),
   paidAt: integer('paid_at', { mode: 'timestamp' })
 });
