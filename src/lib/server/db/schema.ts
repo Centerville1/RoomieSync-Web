@@ -115,7 +115,12 @@ export const expenseSplits = sqliteTable('expense_splits', {
   //
   // The splits always sum to the expense amount. Remainder pennies from an
   // uneven division go to the expense creator, who is already paying up front.
-  amount: real('amount').notNull().default(0),
+  //
+  // Nullable rather than NOT NULL: drizzle-kit push wanted to recreate and
+  // truncate the table to add a NOT NULL column, which would have destroyed
+  // every existing split. Reads treat null as "not yet backfilled" and fall
+  // back to an even share.
+  amount: real('amount'),
   hasPaid: integer('has_paid', { mode: 'boolean' }).notNull().default(false),
   paidAt: integer('paid_at', { mode: 'timestamp' })
 });
