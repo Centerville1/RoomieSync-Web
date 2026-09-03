@@ -79,28 +79,40 @@
       {/if}
     </div>
 
-    <!-- Tab bar -->
-    <nav class="tabs container" aria-label="Household sections">
-      <a
-        href={basePath}
-        class="tab"
-        class:active={isExpensesTab}
-        aria-current={isExpensesTab ? 'page' : undefined}
-      >
-        Expenses
-      </a>
-      <a
-        href="{basePath}/shopping"
-        class="tab"
-        class:active={isShoppingTab}
-        aria-current={isShoppingTab ? 'page' : undefined}
-      >
-        Shopping List
-        <span class="tab-count" class:empty={data.openShoppingItems === 0}>
-          {data.openShoppingItems}
-        </span>
-      </a>
-    </nav>
+    <!-- Sticky strip: household name plus tabs, so both stay reachable while
+         scrolling a long expense list. Offset below the app navbar, which is
+         itself sticky. -->
+    <div class="sticky-strip">
+      <div class="strip-name container">
+        {#if data.household.imageUrl}
+          <img src={data.household.imageUrl} alt="" class="strip-avatar" />
+        {/if}
+        <span class="strip-title">{data.household.name}</span>
+      </div>
+
+      <!-- Tab bar -->
+      <nav class="tabs container" aria-label="Household sections">
+        <a
+          href={basePath}
+          class="tab"
+          class:active={isExpensesTab}
+          aria-current={isExpensesTab ? 'page' : undefined}
+        >
+          Expenses
+        </a>
+        <a
+          href="{basePath}/shopping"
+          class="tab"
+          class:active={isShoppingTab}
+          aria-current={isShoppingTab ? 'page' : undefined}
+        >
+          Shopping List
+          <span class="tab-count" class:empty={data.openShoppingItems === 0}>
+            {data.openShoppingItems}
+          </span>
+        </a>
+      </nav>
+    </div>
   </header>
 
   {@render children()}
@@ -222,6 +234,39 @@
     border-color: var(--color-text-tertiary);
   }
 
+  .sticky-strip {
+    position: sticky;
+    /* Sits directly under the app navbar, whose height Header.svelte measures */
+    top: var(--navbar-height, 5.5rem);
+    z-index: 50;
+    background-color: var(--color-bg-primary);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .strip-name {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-xl) 0;
+  }
+
+  .strip-avatar {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  .strip-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   /* Tab bar */
   .tabs {
     display: flex;
@@ -332,6 +377,14 @@
     .tabs {
       padding: 0 var(--space-sm);
       gap: 2px;
+    }
+
+    .strip-name {
+      padding: var(--space-xs) var(--space-md) 0;
+    }
+
+    .strip-title {
+      font-size: 0.95rem;
     }
 
     /* Split the width evenly so both tabs are full-size touch targets */
