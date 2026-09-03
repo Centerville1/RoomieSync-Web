@@ -91,14 +91,35 @@ export const expenses = sqliteTable('expenses', {
   amount: real('amount').notNull(),
   description: text('description').notNull(),
   isOptional: integer('is_optional', { mode: 'boolean' }).notNull().default(false),
-  // Rent is a label on an ordinary expense, not a separate recurring concept:
-  // it colours the row and drives the Pay Rent banner while the user's own
-  // split is unpaid.
-  isRent: integer('is_rent', { mode: 'boolean' }).notNull().default(false),
+  // Marks this expense as important and records what kind: rent, utilities,
+  // whatever the household defines. Tagged expenses get their own colour in the
+  // grid and raise a banner while the user's own split is unpaid, because these
+  // are the ones that cannot be left to slide. Nullable, since most expenses
+  // are ordinary, and set null on tag deletion so removing a tag never deletes
+  // expenses.
+  tagId: text('tag_id'),
   receiptUrl: text('receipt_url'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
 });
+
+// Expense tags: the household's own list of important expense types, such as
+// rent or utilities. Custom per household, like shopping categories. One tag
+// per expense, so an expense is rent or utilities but not both.
+export const expenseTags = sqliteTable('expense_tags', {
+  id: text('id').primaryKey(),
+  householdId: text('household_id')
+    .notNull()
+    .references(() => households.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  // Hex value chosen by the household; falls back to the app secondary colour
+  color: text('color'),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
+});
+
+export type ExpenseTag = typeof expenseTags.$inferSelect;
+export type NewExpenseTag = typeof expenseTags.$inferInsert;
 
 // Expense splits table
 export const expenseSplits = sqliteTable('expense_splits', {

@@ -7,15 +7,16 @@ import {
   users,
   expenses,
   expenseSplits,
+  expenseTags,
   invites,
   nudgeHistory
 } from '$lib/server/db/schema';
-import { eq, and, desc, inArray, count, sql, gt } from 'drizzle-orm';
+import { eq, and, ne, asc, desc, inArray, count, sql, gt } from 'drizzle-orm';
 import { generateId } from '$lib/server/utils';
 import { sendEmail } from '$lib/server/email';
 import { getHouseholdInviteEmail, getNudgeReminderEmail } from '$lib/server/email/templates';
 import { createInviteSignature } from '$lib/server/invite-signature';
-import { requireAdmin } from '$lib/server/household';
+import { requireAdmin, requireMembership } from '$lib/server/household';
 import { calculateSplits, splitsMatchTotal, parseAmount } from '$lib/server/splits';
 
 const PAGE_SIZE = 20;
@@ -312,6 +313,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
       description: string;
       amount: number;
       isOptional: boolean;
+      tagId: string | null;
       creatorId: string;
       createdAt: Date;
       splits: { userId: string; amount: number | null; hasPaid: boolean; paidAt: Date | null }[];
@@ -325,6 +327,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
         description: row.expense.description,
         amount: row.expense.amount,
         isOptional: row.expense.isOptional,
+        tagId: row.expense.tagId,
         creatorId: row.expense.creatorId,
         createdAt: row.expense.createdAt,
         splits: []
@@ -363,6 +366,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
       description: string;
       amount: number;
       isOptional: boolean;
+      tagId: string | null;
       creatorId: string;
       createdAt: Date;
       splits: { userId: string; amount: number | null; hasPaid: boolean; paidAt: Date | null }[];
@@ -376,6 +380,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
         description: row.expense.description,
         amount: row.expense.amount,
         isOptional: row.expense.isOptional,
+        tagId: row.expense.tagId,
         creatorId: row.expense.creatorId,
         createdAt: row.expense.createdAt,
         splits: []
@@ -422,7 +427,16 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
   const nudgesSent = recentNudges.filter((n) => n.fromUserId === currentUserId);
   const nudgesReceived = recentNudges.filter((n) => n.toUserId === currentUserId);
 
+  // The household's important-expense types, for the create form, the grid
+  // colours and the banners
+  const tags = await db
+    .select()
+    .from(expenseTags)
+    .where(eq(expenseTags.householdId, householdId))
+    .orderBy(asc(expenseTags.sortOrder), asc(expenseTags.name));
+
   return {
+    tags,
     expenses: expensesWithSplits,
     totalExpenses,
     hasMoreExpenses: totalExpenses > PAGE_SIZE,
@@ -434,6 +448,22 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
     unpaidExpenses
   };
 };
+
+/**
+ * Verify a submitted tag belongs to this household.
+ *
+ * Returns true for null (untagged, which is the common case). The foreign key
+ * alone would only prove the tag exists somewhere.
+ */
+async function tagBelongsToHousehold(tagId: string | null, householdId: string) {
+  if (tagId === null) return true;
+  const rows = await db
+    .select({ id: expenseTags.id })
+    .from(expenseTags)
+    .where(and(eq(expenseTags.id, tagId), eq(expenseTags.householdId, householdId)))
+    .limit(1);
+  return rows.length > 0;
+}
 
 export const actions: Actions = {
   createExpense: async ({ request, locals, params }) => {
@@ -463,6 +493,7 @@ export const actions: Actions = {
     const amount = parseAmount(formData.get('amount'));
     const description = formData.get('description') as string;
     const isOptional = formData.get('isOptional') === 'on';
+    const tagId = (formData.get('tagId') as string) || null;
     const splitWith = formData.getAll('splitWith') as string[];
 
     // Validate input. parseAmount rejects Infinity, NaN and trailing junk,
@@ -473,6 +504,9 @@ export const actions: Actions = {
     }
     if (!description || description.trim() === '') {
       return fail(400, { error: 'Description is required' });
+    }
+    if (!(await tagBelongsToHousehold(tagId, householdId))) {
+      return fail(400, { error: 'Unknown tag' });
     }
     // Note: splitWith can be empty - creator is always included in the split
 
@@ -545,6 +579,7 @@ export const actions: Actions = {
       amount,
       description,
       isOptional,
+      tagId,
       createdAt: new Date(),
       updatedAt: new Date()
     });
@@ -974,6 +1009,7 @@ export const actions: Actions = {
     const expenseId = formData.get('expenseId') as string;
     const description = formData.get('description') as string;
     const isOptional = formData.get('isOptional') === 'on';
+    const tagId = (formData.get('tagId') as string) || null;
     const splitWith = formData.getAll('splitWith') as string[];
 
     if (!expenseId) {
@@ -1001,10 +1037,14 @@ export const actions: Actions = {
       return fail(403, { error: 'You can only edit expenses you created' });
     }
 
-    // Update the expense description and optional status
+    if (!(await tagBelongsToHousehold(tagId, householdId))) {
+      return fail(400, { error: 'Unknown tag' });
+    }
+
+    // Update the expense description, optional status and tag
     await db
       .update(expenses)
-      .set({ description: description.trim(), isOptional, updatedAt: new Date() })
+      .set({ description: description.trim(), isOptional, tagId, updatedAt: new Date() })
       .where(eq(expenses.id, expenseId));
 
     // Handle split changes if splitWith was provided
@@ -1583,6 +1623,126 @@ export const actions: Actions = {
       .update(households)
       .set({ name, updatedAt: new Date() })
       .where(eq(households.id, householdId));
+
+    return { success: true };
+  },
+
+  createTag: async ({ request, locals, params }) => {
+    const householdId = params.id;
+    await requireMembership(locals, householdId);
+
+    const formData = await request.formData();
+    const name = (formData.get('name') as string)?.trim();
+    const color = (formData.get('color') as string)?.trim() || null;
+
+    if (!name) {
+      return fail(400, { error: 'Tag name is required' });
+    }
+
+    const existing = await db
+      .select({ id: expenseTags.id })
+      .from(expenseTags)
+      .where(
+        and(
+          eq(expenseTags.householdId, householdId),
+          sql`lower(${expenseTags.name}) = lower(${name})`
+        )
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      return fail(400, { error: 'That tag already exists' });
+    }
+
+    const maxOrder = await db
+      .select({ max: sql<number>`coalesce(max(${expenseTags.sortOrder}), -1)` })
+      .from(expenseTags)
+      .where(eq(expenseTags.householdId, householdId));
+
+    await db.insert(expenseTags).values({
+      id: generateId(),
+      householdId,
+      name,
+      color,
+      sortOrder: (maxOrder[0]?.max ?? -1) + 1,
+      createdAt: new Date()
+    });
+
+    return { success: true };
+  },
+
+  updateTag: async ({ request, locals, params }) => {
+    const householdId = params.id;
+    await requireMembership(locals, householdId);
+
+    const formData = await request.formData();
+    const tagId = formData.get('tagId') as string;
+    const name = (formData.get('name') as string)?.trim();
+    const color = (formData.get('color') as string)?.trim() || null;
+
+    if (!tagId || !name) {
+      return fail(400, { error: 'Tag name is required' });
+    }
+
+    const clash = await db
+      .select({ id: expenseTags.id })
+      .from(expenseTags)
+      .where(
+        and(
+          eq(expenseTags.householdId, householdId),
+          ne(expenseTags.id, tagId),
+          sql`lower(${expenseTags.name}) = lower(${name})`
+        )
+      )
+      .limit(1);
+
+    if (clash.length > 0) {
+      return fail(400, { error: 'That tag already exists' });
+    }
+
+    const result = await db
+      .update(expenseTags)
+      .set({ name, color })
+      .where(and(eq(expenseTags.id, tagId), eq(expenseTags.householdId, householdId)));
+
+    if (result.rowsAffected === 0) {
+      return fail(404, { error: 'Tag not found' });
+    }
+
+    return { success: true };
+  },
+
+  deleteTag: async ({ request, locals, params }) => {
+    const householdId = params.id;
+    // Admin only: deleting a tag untags every expense that used it, and there
+    // is no record of what the tag was afterwards.
+    await requireAdmin(locals, householdId, 'delete expense tags');
+
+    const formData = await request.formData();
+    const tagId = formData.get('tagId') as string;
+
+    if (!tagId) {
+      return fail(400, { error: 'Tag is required' });
+    }
+
+    // Untag the expenses first, then remove the tag, in one transaction so an
+    // expense can never point at a tag that no longer exists.
+    const deleted = await db.transaction(async (tx) => {
+      await tx
+        .update(expenses)
+        .set({ tagId: null, updatedAt: new Date() })
+        .where(and(eq(expenses.householdId, householdId), eq(expenses.tagId, tagId)));
+
+      const result = await tx
+        .delete(expenseTags)
+        .where(and(eq(expenseTags.id, tagId), eq(expenseTags.householdId, householdId)));
+
+      return result.rowsAffected;
+    });
+
+    if (deleted === 0) {
+      return fail(404, { error: 'Tag not found' });
+    }
 
     return { success: true };
   },

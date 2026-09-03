@@ -11,11 +11,14 @@
     open = $bindable(false),
     members = [],
     currentUserId,
+    tags = [],
     form
   }: {
     open: boolean;
     members: Array<{ id: string; name: string; displayName: string | null }>;
     currentUserId: string;
+    /** The household's important-expense types; empty until one is created */
+    tags?: Array<{ id: string; name: string; color: string | null }>;
     form?: { error?: string } | null;
   } = $props();
 
@@ -23,6 +26,7 @@
   let overrides = $state<Record<string, number>>({});
   let amount = $state(0);
   let isOptional = $state(false);
+  let tagId = $state('');
   // Set false by the split editor while the pinned amounts cannot reconcile
   let splitValid = $state(true);
   // True while the amount text cannot be resolved: typing "12" then "+" leaves
@@ -34,6 +38,7 @@
   function handleClose() {
     open = false;
     isOptional = false;
+    tagId = '';
     selectedMembers = [];
     overrides = {};
     amount = 0;
@@ -88,6 +93,22 @@
         </p>
       {/if}
 
+      {#if tags.length > 0}
+        <div class="form-group">
+          <label for="expense-tag" class="tag-label">Type (optional)</label>
+          <select bind:value={tagId} name="tagId" id="expense-tag">
+            <option value="">No tag</option>
+            {#each tags as t (t.id)}
+              <option value={t.id}>{t.name}</option>
+            {/each}
+          </select>
+          <p class="tag-help">
+            Tagging an expense marks it as important: it gets its own colour and raises a banner
+            until everyone has paid.
+          </p>
+        </div>
+      {/if}
+
       <div class="form-group">
         <Checkbox
           name="isOptional"
@@ -110,6 +131,34 @@
 </Modal>
 
 <style>
+  .tag-label {
+    display: block;
+    margin-bottom: var(--space-xs);
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+  }
+
+  select {
+    width: 100%;
+    /* 16px minimum stops iOS Safari zooming the page on focus */
+    font-size: 16px;
+    min-height: 44px;
+    padding: 0 var(--space-sm);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    font-family: inherit;
+  }
+
+  .tag-help {
+    margin: var(--space-xs) 0 0;
+    color: var(--color-text-tertiary);
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+
   .form-error {
     margin: var(--space-sm) 0 0;
     padding: var(--space-sm) var(--space-md);
