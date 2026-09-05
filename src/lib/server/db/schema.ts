@@ -91,10 +91,41 @@ export const expenses = sqliteTable('expenses', {
   amount: real('amount').notNull(),
   description: text('description').notNull(),
   isOptional: integer('is_optional', { mode: 'boolean' }).notNull().default(false),
+  // Marks this expense as high priority and records what kind: rent, utilities,
+  // whatever the household defines. These get their own colour in the grid and
+  // raise a banner while the user's own split is unpaid, because they are the
+  // ones that cannot be left to slide. Nullable, since most expenses are
+  // ordinary. ON DELETE SET NULL is a real constraint, so removing a type never
+  // deletes expenses no matter which route deletes it.
+  tagId: text('tag_id').references(() => expenseTags.id, { onDelete: 'set null' }),
+  // When a high priority expense is due, shown in its banner. Display only for
+  // now: nothing sorts, sends or escalates on it. Stored as a date-only string
+  // (YYYY-MM-DD) rather than a timestamp, because "rent is due on the 1st" has
+  // no meaningful time of day and a timestamp would drift across time zones.
+  // Only meaningful alongside a tagId; cleared when the type is cleared.
+  dueDate: text('due_date'),
   receiptUrl: text('receipt_url'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
 });
+
+// Expense tags: the household's own list of important expense types, such as
+// rent or utilities. Custom per household, like shopping categories. One tag
+// per expense, so an expense is rent or utilities but not both.
+export const expenseTags = sqliteTable('expense_tags', {
+  id: text('id').primaryKey(),
+  householdId: text('household_id')
+    .notNull()
+    .references(() => households.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  // Hex value chosen by the household; falls back to the app secondary colour
+  color: text('color'),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
+});
+
+export type ExpenseTag = typeof expenseTags.$inferSelect;
+export type NewExpenseTag = typeof expenseTags.$inferInsert;
 
 // Expense splits table
 export const expenseSplits = sqliteTable('expense_splits', {
@@ -105,6 +136,18 @@ export const expenseSplits = sqliteTable('expense_splits', {
   userId: text('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
+  // What this person owes. Stored per split rather than derived, so an expense
+  // can be divided unevenly. Every read uses this value: deriving it as
+  // amount/count anywhere would silently ignore overrides.
+  //
+  // The splits always sum to the expense amount. Remainder pennies from an
+  // uneven division go to the expense creator, who is already paying up front.
+  //
+  // Nullable rather than NOT NULL: drizzle-kit push wanted to recreate and
+  // truncate the table to add a NOT NULL column, which would have destroyed
+  // every existing split. Reads treat null as "not yet backfilled" and fall
+  // back to an even share.
+  amount: real('amount'),
   hasPaid: integer('has_paid', { mode: 'boolean' }).notNull().default(false),
   paidAt: integer('paid_at', { mode: 'timestamp' })
 });

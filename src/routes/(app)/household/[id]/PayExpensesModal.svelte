@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { shareFor } from '$lib/splits';
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
   import { enhance } from '$app/forms';
@@ -11,6 +12,7 @@
 
   type Split = {
     userId: string;
+    amount: number | null;
     hasPaid: boolean;
   };
 
@@ -90,7 +92,7 @@
   const selectedExpensesWithShare = $derived(
     selectedExpenses.map((expense) => ({
       ...expense,
-      userShare: expense.amount / expense.splits.length
+      userShare: shareFor(expense, currentUserId)
     }))
   );
 
@@ -102,8 +104,7 @@
     const owedMap = new Map<string, number>();
 
     for (const expense of selectedExpenses) {
-      const splitCount = expense.splits.length;
-      const userShare = expense.amount / splitCount;
+      const userShare = shareFor(expense, currentUserId);
 
       const currentOwed = owedMap.get(expense.creatorId) || 0;
       owedMap.set(expense.creatorId, currentOwed + userShare);
@@ -146,7 +147,8 @@
       const available = reverseExpenses
         .filter((e) => e.splits.some((s) => s.userId === creatorId && !s.hasPaid))
         .map((e) => {
-          const theirShare = e.amount / e.splits.length;
+          // The other person's share of an expense the current user paid for
+          const theirShare = shareFor(e, creatorId);
           return {
             id: e.id,
             description: e.description,

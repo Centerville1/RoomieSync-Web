@@ -15,6 +15,8 @@
   import ExpenseGrid from './ExpenseGrid.svelte';
   import BalanceChart from './BalanceChart.svelte';
   import HouseholdInfoCard from './HouseholdInfoCard.svelte';
+  import TagManagerModal from './TagManagerModal.svelte';
+  import { shareFor } from '$lib/splits';
   import { onMount } from 'svelte';
   import { page } from '$app/state';
 
@@ -29,6 +31,7 @@
   // The two totals are what people check; the chart is occasional, and it costs
   // a lot of vertical space on a phone.
   let showBalanceHistory = $state(false);
+  let showTagModal = $state(false);
   let importExpenseDefaultCreatorId = $state('');
 
   // Nudge state
@@ -46,10 +49,15 @@
     description: string;
     amount: number;
     isOptional: boolean;
+    tagId: string | null;
+    dueDate: string | null;
     creatorId: string;
     createdAt: Date;
-    splits: { userId: string; hasPaid: boolean; paidAt: Date | null }[];
+    splits: { userId: string; amount: number | null; hasPaid: boolean; paidAt: Date | null }[];
   };
+  // Admins define the tag vocabulary; every member can apply an existing tag
+  const isAdmin = $derived(data.userRole === 'admin');
+
   let selectedExpenseForEdit = $state<Expense | null>(null);
   let selectedExpenseForDelete = $state<Expense | null>(null);
   let selectedExpenseForCancelPayment = $state<Expense | null>(null);
@@ -177,6 +185,55 @@
     )
   );
 
+  // One banner per tag the user still owes on. Uses unpaidExpenses rather than
+  // the loaded page, so a tagged expense further back still raises its banner.
+  const tagDebts = $derived.by(() => {
+    const byTag = new Map<
+      string,
+      { tag: (typeof data.tags)[number]; total: number; ids: string[]; dueDate: string | null }
+    >();
+    for (const e of data.unpaidExpenses) {
+      if (!e.tagId) continue;
+      const tag = data.tags.find((t) => t.id === e.tagId);
+      if (!tag) continue;
+      const mine = e.splits.find((sp) => sp.userId === data.currentUserId);
+      if (!mine || mine.hasPaid) continue;
+      const entry = byTag.get(tag.id) ?? { tag, total: 0, ids: [], dueDate: null };
+      entry.total += shareFor(e, data.currentUserId);
+      entry.ids.push(e.id);
+      // Several expenses can share a type, so the banner shows the soonest date
+      if (e.dueDate && (entry.dueDate === null || e.dueDate < entry.dueDate)) {
+        entry.dueDate = e.dueDate;
+      }
+      byTag.set(tag.id, entry);
+    }
+    return [...byTag.values()].sort((a, b) => b.total - a.total);
+  });
+
+  // Parsed as UTC: a bare "2026-09-01" through the local Date constructor lands
+  // on the previous day for anyone west of UTC.
+  function formatDueDate(iso: string) {
+    const [y, m, d] = iso.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'UTC'
+    });
+  }
+
+  function daysUntil(iso: string) {
+    const [y, m, d] = iso.split('-').map(Number);
+    const due = Date.UTC(y, m - 1, d);
+    const now = new Date();
+    const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.round((due - today) / 86400000);
+  }
+
+  function payTag(ids: string[]) {
+    selectedExpenseIds = new Set(ids);
+    showPayExpensesModal = true;
+  }
+
   // The pay modal resolves each selected id against this array, so it must hold
   // the unpaid expenses even when they are not on the loaded page. Loaded rows
   // win, since they carry the creator object the grid renders.
@@ -239,6 +296,37 @@
       isAdmin={data.userRole === 'admin'}
     />
 
+    <!-- Tagged expenses are the ones that cannot slide, so they get said out
+         loud rather than being left to find in the grid. -->
+    {#each tagDebts as debt (debt.tag.id)}
+      <div class="tag-banner" style="--tag-color: {debt.tag.color ?? '#6b7fff'}" role="status">
+        <div class="tag-banner-text">
+          <strong>{debt.tag.name} due</strong>
+          <span>
+            You owe {formatCurrency(debt.total)} across {debt.ids.length}
+            {debt.ids.length === 1 ? 'expense' : 'expenses'}
+          </span>
+          {#if debt.dueDate}
+            {@const days = daysUntil(debt.dueDate)}
+            <span class="tag-due" class:overdue={days < 0} class:soon={days >= 0 && days <= 3}>
+              {#if days < 0}
+                Was due {formatDueDate(debt.dueDate)}
+              {:else if days === 0}
+                Due today
+              {:else if days === 1}
+                Due tomorrow
+              {:else}
+                Due {formatDueDate(debt.dueDate)}
+              {/if}
+            </span>
+          {/if}
+        </div>
+        <Button variant="primary" size="sm" on:click={() => payTag(debt.ids)}>
+          Pay {debt.tag.name}
+        </Button>
+      </div>
+    {/each}
+
     <h2 class="section-title">Expenses</h2>
 
     <!-- Summary Dashboard -->
@@ -300,6 +388,11 @@
               </span>
             </Button>
           </div>
+          {#if isAdmin}
+            <button type="button" class="manage-tags" onclick={() => (showTagModal = true)}>
+              Priority Expense Types
+            </button>
+          {/if}
           {#if allSelectableExpenseIds.size > 0}
             <div class="secondary-cta">
               <Button variant="outline" size="sm" on:click={handlePayAll}>
@@ -318,6 +411,7 @@
         {selectedExpenseIds}
         onSelectionChange={handleSelectionChange}
         allSelectableIds={allSelectableExpenseIds}
+        tags={data.tags}
         memberBalances={data.memberBalances}
         onEditExpense={handleEditExpense}
         onDeleteExpense={handleDeleteExpense}
@@ -370,8 +464,18 @@
   </div>
 {/if}
 
+{#if isAdmin}
+  <TagManagerModal bind:open={showTagModal} tags={data.tags} householdId={data.household.id} />
+{/if}
+
 <!-- Split the Cost Modal -->
-<SplitCostModal bind:open={showSplitCostModal} members={otherMembers} />
+<SplitCostModal
+  bind:open={showSplitCostModal}
+  members={otherMembers}
+  currentUserId={data.currentUserId}
+  tags={data.tags}
+  {form}
+/>
 
 <!-- Pay Expenses Modal -->
 <PayExpensesModal
@@ -389,6 +493,7 @@
   bind:open={showEditExpenseModal}
   expense={selectedExpenseForEdit}
   members={data.members}
+  tags={data.tags}
 />
 
 <!-- Delete Expense Modal -->
@@ -505,6 +610,58 @@
 
   .caret.open {
     transform: rotate(90deg);
+  }
+
+  /* Coloured by the tag itself, so rent and utilities read as different things
+     rather than a generic warning */
+  .tag-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    margin-bottom: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    border: 1px solid var(--tag-color);
+    border-left: 4px solid var(--tag-color);
+    border-radius: var(--radius-md);
+    background-color: color-mix(in srgb, var(--tag-color) 12%, transparent);
+  }
+
+  .tag-banner-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .tag-banner-text strong {
+    color: var(--color-text-primary);
+    font-size: 0.95rem;
+  }
+
+  .tag-due {
+    display: inline-block;
+    margin-top: 2px;
+    padding: 1px 0.45rem;
+    border-radius: 999px;
+    background-color: color-mix(in srgb, var(--tag-color) 20%, transparent);
+    color: var(--color-text-primary);
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+
+  .tag-due.soon {
+    background-color: color-mix(in srgb, var(--color-warning) 26%, transparent);
+  }
+
+  .tag-due.overdue {
+    background-color: color-mix(in srgb, var(--color-error) 22%, transparent);
+    color: var(--color-error);
+  }
+
+  .tag-banner-text span {
+    color: var(--color-text-secondary);
+    font-size: 0.85rem;
   }
 
   .section-title {
@@ -649,6 +806,25 @@
     font-size: 0.78rem;
     font-weight: 500;
     opacity: 0.85;
+  }
+
+  .manage-tags {
+    flex-shrink: 0;
+    min-height: 32px;
+    padding: 0 var(--space-md);
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: none;
+    color: var(--color-text-secondary);
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .manage-tags:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
   }
 
   .btn-plus {

@@ -7,15 +7,17 @@ import {
   users,
   expenses,
   expenseSplits,
+  expenseTags,
   invites,
   nudgeHistory
 } from '$lib/server/db/schema';
-import { eq, and, desc, inArray, count, sql, gt } from 'drizzle-orm';
+import { eq, and, ne, asc, desc, inArray, count, sql, gt } from 'drizzle-orm';
 import { generateId } from '$lib/server/utils';
 import { sendEmail } from '$lib/server/email';
 import { getHouseholdInviteEmail, getNudgeReminderEmail } from '$lib/server/email/templates';
 import { createInviteSignature } from '$lib/server/invite-signature';
-import { requireAdmin } from '$lib/server/household';
+import { requireAdmin, requireMembership } from '$lib/server/household';
+import { calculateSplits, splitsMatchTotal, parseAmount } from '$lib/server/splits';
 
 const PAGE_SIZE = 20;
 
@@ -84,13 +86,20 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
     }
   }
 
-  // Query: What others owe the current user (unpaid splits on current user's expenses)
+  // Query: What others owe the current user (unpaid splits on current user's
+  // expenses). Summed in SQL from the stored per-split amounts, so uneven
+  // splits are respected and only one row per debtor crosses the wire.
+  //
+  // COALESCE covers any split written before per-split amounts existed: those
+  // fall back to an even share of the expense.
   const owedToCurrentUser = await db
     .select({
       odebtor: expenseSplits.userId,
-      amount: expenses.amount,
       isOptional: expenses.isOptional,
-      splitCount: sql<number>`(SELECT COUNT(*) FROM expense_splits WHERE expense_id = ${expenses.id})`
+      total: sql<number>`SUM(COALESCE(
+        ${expenseSplits.amount},
+        ${expenses.amount} / (SELECT COUNT(*) FROM expense_splits WHERE expense_id = ${expenses.id})
+      ))`
     })
     .from(expenses)
     .innerJoin(expenseSplits, eq(expenses.id, expenseSplits.expenseId))
@@ -101,27 +110,29 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
         eq(expenseSplits.hasPaid, false),
         sql`${expenseSplits.userId} != ${currentUserId}`
       )
-    );
+    )
+    .groupBy(expenseSplits.userId, expenses.isOptional);
 
   for (const row of owedToCurrentUser) {
     const odebtor = row.odebtor;
     if (memberBalances[odebtor]) {
-      const share = row.amount / row.splitCount;
       if (row.isOptional) {
-        memberBalances[odebtor].owesYouOptional += share;
+        memberBalances[odebtor].owesYouOptional += row.total;
       } else {
-        memberBalances[odebtor].owesYou += share;
+        memberBalances[odebtor].owesYou += row.total;
       }
     }
   }
 
-  // Query: What current user owes others (unpaid splits where current user hasn't paid)
+  // Query: What the current user owes others, summed the same way
   const owedByCurrentUser = await db
     .select({
       creditor: expenses.creatorId,
-      amount: expenses.amount,
       isOptional: expenses.isOptional,
-      splitCount: sql<number>`(SELECT COUNT(*) FROM expense_splits WHERE expense_id = ${expenses.id})`
+      total: sql<number>`SUM(COALESCE(
+        ${expenseSplits.amount},
+        ${expenses.amount} / (SELECT COUNT(*) FROM expense_splits WHERE expense_id = ${expenses.id})
+      ))`
     })
     .from(expenses)
     .innerJoin(expenseSplits, eq(expenses.id, expenseSplits.expenseId))
@@ -132,16 +143,16 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
         eq(expenseSplits.hasPaid, false),
         sql`${expenses.creatorId} != ${currentUserId}`
       )
-    );
+    )
+    .groupBy(expenses.creatorId, expenses.isOptional);
 
   for (const row of owedByCurrentUser) {
     const creditor = row.creditor;
     if (memberBalances[creditor]) {
-      const share = row.amount / row.splitCount;
       if (row.isOptional) {
-        memberBalances[creditor].youOweOptional += share;
+        memberBalances[creditor].youOweOptional += row.total;
       } else {
-        memberBalances[creditor].youOwe += share;
+        memberBalances[creditor].youOwe += row.total;
       }
     }
   }
@@ -156,6 +167,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
       creatorId: expenses.creatorId,
       isOptional: expenses.isOptional,
       splitUserId: expenseSplits.userId,
+      splitAmount: expenseSplits.amount,
       hasPaid: expenseSplits.hasPaid,
       paidAt: expenseSplits.paidAt
     })
@@ -177,8 +189,10 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
   const processedExpenses = new Set<string>();
 
   for (const row of balanceHistoryData) {
+    // The stored share, falling back to an even split only for rows written
+    // before per-split amounts existed.
     const splitCount = balanceHistoryData.filter((r) => r.expenseId === row.expenseId).length;
-    const share = row.expenseAmount / splitCount;
+    const share = row.splitAmount ?? (splitCount > 0 ? row.expenseAmount / splitCount : 0);
 
     // When expense is created: if I'm in the split (not creator), I owe money
     // If I'm the creator and others are in the split, they owe me
@@ -190,10 +204,15 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
       const isMyExpense = row.creatorId === currentUserId;
 
       if (isMyExpense) {
-        // Others owe me their shares
+        // Others owe me their shares. Each person's own amount, not this row's
+        // share counted once per person: with uneven splits those differ.
         const othersOwedTotal = expenseSplitsForThis
           .filter((s) => s.splitUserId !== currentUserId)
-          .reduce((sum) => sum + share, 0);
+          .reduce(
+            (sum, s) =>
+              sum + (s.splitAmount ?? (splitCount > 0 ? row.expenseAmount / splitCount : 0)),
+            0
+          );
         if (othersOwedTotal > 0) {
           balanceEvents.push({
             date: row.expenseCreatedAt,
@@ -207,9 +226,14 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
         // Check if I'm in this split
         const myShare = expenseSplitsForThis.find((s) => s.splitUserId === currentUserId);
         if (myShare) {
+          // My own share, not `share`: that comes from whichever row this loop
+          // happens to be on, which may be another participant. With uneven
+          // splits those differ, and the processedExpenses guard means the
+          // first row seen is the only chance to get it right.
+          const mine = myShare.splitAmount ?? (splitCount > 0 ? row.expenseAmount / splitCount : 0);
           balanceEvents.push({
             date: row.expenseCreatedAt,
-            youOweChange: share,
+            youOweChange: mine,
             owedToYouChange: 0,
             isOptional: row.isOptional,
             description: 'Expense created'
@@ -261,6 +285,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
     .select({
       expense: expenses,
       splitUserId: expenseSplits.userId,
+      splitAmount: expenseSplits.amount,
       splitHasPaid: expenseSplits.hasPaid,
       splitPaidAt: expenseSplits.paidAt
     })
@@ -288,9 +313,11 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
       description: string;
       amount: number;
       isOptional: boolean;
+      tagId: string | null;
+      dueDate: string | null;
       creatorId: string;
       createdAt: Date;
-      splits: { userId: string; hasPaid: boolean; paidAt: Date | null }[];
+      splits: { userId: string; amount: number | null; hasPaid: boolean; paidAt: Date | null }[];
     }
   >();
 
@@ -301,6 +328,11 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
         description: row.expense.description,
         amount: row.expense.amount,
         isOptional: row.expense.isOptional,
+        tagId: row.expense.tagId,
+        // A due date only means something alongside a type. The FK sets tag_id
+        // to null if a type is deleted outside the app, which would otherwise
+        // leave the date stranded on an ordinary expense.
+        dueDate: row.expense.tagId ? row.expense.dueDate : null,
         creatorId: row.expense.creatorId,
         createdAt: row.expense.createdAt,
         splits: []
@@ -308,6 +340,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
     }
     unpaidMap.get(row.expense.id)!.splits.push({
       userId: row.splitUserId,
+      amount: row.splitAmount,
       hasPaid: row.splitHasPaid,
       paidAt: row.splitPaidAt
     });
@@ -322,6 +355,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
       expense: expenses,
       splitId: expenseSplits.id,
       splitUserId: expenseSplits.userId,
+      splitAmount: expenseSplits.amount,
       splitHasPaid: expenseSplits.hasPaid,
       splitPaidAt: expenseSplits.paidAt
     })
@@ -337,9 +371,11 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
       description: string;
       amount: number;
       isOptional: boolean;
+      tagId: string | null;
+      dueDate: string | null;
       creatorId: string;
       createdAt: Date;
-      splits: { userId: string; hasPaid: boolean; paidAt: Date | null }[];
+      splits: { userId: string; amount: number | null; hasPaid: boolean; paidAt: Date | null }[];
     }
   >();
 
@@ -350,6 +386,11 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
         description: row.expense.description,
         amount: row.expense.amount,
         isOptional: row.expense.isOptional,
+        tagId: row.expense.tagId,
+        // A due date only means something alongside a type. The FK sets tag_id
+        // to null if a type is deleted outside the app, which would otherwise
+        // leave the date stranded on an ordinary expense.
+        dueDate: row.expense.tagId ? row.expense.dueDate : null,
         creatorId: row.expense.creatorId,
         createdAt: row.expense.createdAt,
         splits: []
@@ -357,6 +398,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
     }
     reverseExpenseMap.get(row.expense.id)!.splits.push({
       userId: row.splitUserId,
+      amount: row.splitAmount,
       hasPaid: row.splitHasPaid,
       paidAt: row.splitPaidAt
     });
@@ -395,7 +437,16 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
   const nudgesSent = recentNudges.filter((n) => n.fromUserId === currentUserId);
   const nudgesReceived = recentNudges.filter((n) => n.toUserId === currentUserId);
 
+  // The household's important-expense types, for the create form, the grid
+  // colours and the banners
+  const tags = await db
+    .select()
+    .from(expenseTags)
+    .where(eq(expenseTags.householdId, householdId))
+    .orderBy(asc(expenseTags.sortOrder), asc(expenseTags.name));
+
   return {
+    tags,
     expenses: expensesWithSplits,
     totalExpenses,
     hasMoreExpenses: totalExpenses > PAGE_SIZE,
@@ -407,6 +458,44 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
     unpaidExpenses
   };
 };
+
+/**
+ * Verify a submitted tag belongs to this household.
+ *
+ * Returns true for null (untagged, which is the common case). The foreign key
+ * alone would only prove the tag exists somewhere.
+ */
+async function tagBelongsToHousehold(tagId: string | null, householdId: string) {
+  if (tagId === null) return true;
+  const rows = await db
+    .select({ id: expenseTags.id })
+    .from(expenseTags)
+    .where(and(eq(expenseTags.id, tagId), eq(expenseTags.householdId, householdId)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * Validate a posted due date.
+ *
+ * Only meaningful on a high priority expense, so it is dropped when there is no
+ * type. Date-only (YYYY-MM-DD) to match the column; anything else is rejected
+ * rather than coerced, so a malformed value cannot reach the banner.
+ */
+function parseDueDate(raw: FormDataEntryValue | null, tagId: string | null): string | null {
+  if (tagId === null) return null;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (trimmed === '') return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  // Reject impossible dates that match the shape, e.g. 2026-02-31
+  const [y, m, d] = trimmed.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) {
+    return null;
+  }
+  return trimmed;
+}
 
 export const actions: Actions = {
   createExpense: async ({ request, locals, params }) => {
@@ -433,47 +522,120 @@ export const actions: Actions = {
     }
 
     const formData = await request.formData();
-    const amount = parseFloat(formData.get('amount') as string);
+    const amount = parseAmount(formData.get('amount'));
     const description = formData.get('description') as string;
     const isOptional = formData.get('isOptional') === 'on';
+    // Any member may apply a tag. Only defining the vocabulary is admin-only:
+    // whoever pays the rent is the one who needs to flag it as rent.
+    // tagBelongsToHousehold below rejects a tag from another household.
+    const tagId = (formData.get('tagId') as string) || null;
+    const dueDate = parseDueDate(formData.get('dueDate'), tagId);
     const splitWith = formData.getAll('splitWith') as string[];
 
-    // Validate input
-    if (!amount || amount <= 0) {
-      return fail(400, { error: 'Amount must be greater than 0' });
+    // Validate input. parseAmount rejects Infinity, NaN and trailing junk,
+    // which `!amount || amount <= 0` let through: an Infinity amount would
+    // poison every balance SUM in the household.
+    if (amount === null) {
+      return fail(400, { error: 'Enter an amount between 0 and 1,000,000' });
     }
     if (!description || description.trim() === '') {
       return fail(400, { error: 'Description is required' });
     }
+    if (!(await tagBelongsToHousehold(tagId, householdId))) {
+      return fail(400, { error: 'Unknown tag' });
+    }
+
     // Note: splitWith can be empty - creator is always included in the split
 
-    // Create expense
-    const expenseId = generateId();
     const currentUserId = locals.user.id;
-    await db.insert(expenses).values({
-      id: expenseId,
-      householdId,
-      creatorId: currentUserId,
-      amount,
-      description,
-      isOptional,
-      createdAt: new Date(),
-      updatedAt: new Date()
+
+    // Per-person amounts posted by the split editor. Only the overridden ones
+    // are trusted as intent: the rest are recalculated here so the stored
+    // shares always sum to the expense, whatever the client sent.
+    const postedIds = formData.getAll('splitUserIds') as string[];
+    const postedAmounts = formData.getAll('splitAmounts') as string[];
+    const posted = new Map<string, number>();
+    postedIds.forEach((id, i) => {
+      const value = parseFloat(postedAmounts[i]);
+      if (Number.isFinite(value) && value >= 0) posted.set(id, value);
     });
 
-    // Create expense splits for selected members + creator
-    // Include the creator in the splits (marked as already paid)
-    const allSplitUsers = [...new Set([currentUserId, ...splitWith])];
+    // Who the expense is divided between. The split editor posts one row per
+    // participant, which is the authoritative list; splitWith is the older
+    // shape and is still honoured so any caller that sends it keeps working.
+    const requested = postedIds.length > 0 ? postedIds : splitWith;
 
-    const splits = allSplitUsers.map((userId) => ({
-      id: generateId(),
-      expenseId,
-      userId,
-      hasPaid: userId === currentUserId, // Creator has already paid
-      paidAt: userId === currentUserId ? new Date() : null
-    }));
+    // Only real members of this household can be given a share, so a forged id
+    // cannot attach someone else's account to an expense.
+    const memberRows = await db
+      .select({ userId: householdMembers.userId })
+      .from(householdMembers)
+      .where(eq(householdMembers.householdId, householdId));
+    const memberIds = new Set(memberRows.map((m) => m.userId));
 
-    await db.insert(expenseSplits).values(splits);
+    const allSplitUsers = [...new Set([currentUserId, ...requested])].filter((id) =>
+      memberIds.has(id)
+    );
+
+    // An amount counts as an override only if it differs from the even share,
+    // so an untouched form still divides evenly after any rounding.
+    const evenShare = amount / allSplitUsers.length;
+    const splitAmounts = calculateSplits(
+      amount,
+      allSplitUsers.map((userId) => {
+        const p = posted.get(userId);
+        const isOverride = p !== undefined && Math.abs(p - evenShare) > 0.005;
+        return { userId, override: isOverride ? p : undefined };
+      }),
+      currentUserId
+    );
+
+    // Validate before writing anything. calculateSplits honours overrides as
+    // given, so a client that pins every share could otherwise leave part of
+    // the expense unaccounted for, and an early return after the expense row
+    // was inserted would leave it orphaned with no splits.
+    if (
+      !splitsMatchTotal(
+        amount,
+        splitAmounts.map((sp) => sp.amount)
+      )
+    ) {
+      return fail(400, {
+        error: 'The split amounts must add up to the expense total'
+      });
+    }
+
+    const amountByUser = new Map(splitAmounts.map((sp) => [sp.userId, sp.amount]));
+
+    // Create expense. One transaction: an expense with no split rows owes
+    // nothing to anyone and shows up for no one, but still counts toward the
+    // household total, so it must never exist on its own.
+    const expenseId = generateId();
+    await db.transaction(async (tx) => {
+      await tx.insert(expenses).values({
+        id: expenseId,
+        householdId,
+        creatorId: currentUserId,
+        amount,
+        description,
+        isOptional,
+        tagId,
+        dueDate,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      await tx.insert(expenseSplits).values(
+        allSplitUsers.map((userId) => ({
+          id: generateId(),
+          expenseId,
+          userId,
+          amount: amountByUser.get(userId) ?? 0,
+          hasPaid: userId === currentUserId, // Creator has already paid
+          paidAt: userId === currentUserId ? new Date() : null
+        }))
+      );
+    });
 
     return { success: true };
   },
@@ -889,7 +1051,16 @@ export const actions: Actions = {
     const expenseId = formData.get('expenseId') as string;
     const description = formData.get('description') as string;
     const isOptional = formData.get('isOptional') === 'on';
+    const postedTagId = (formData.get('tagId') as string) || null;
     const splitWith = formData.getAll('splitWith') as string[];
+    // Per-person amounts from the split editor, same shape as createExpense.
+    const postedIds = formData.getAll('splitUserIds') as string[];
+    const postedAmounts = formData.getAll('splitAmounts') as string[];
+    const posted = new Map<string, number>();
+    postedIds.forEach((id, i) => {
+      const value = parseFloat(postedAmounts[i]);
+      if (Number.isFinite(value) && value >= 0) posted.set(id, value);
+    });
 
     if (!expenseId) {
       return fail(400, { error: 'Expense ID is required' });
@@ -916,22 +1087,79 @@ export const actions: Actions = {
       return fail(403, { error: 'You can only edit expenses you created' });
     }
 
-    // Update the expense description and optional status
-    await db
-      .update(expenses)
-      .set({ description: description.trim(), isOptional, updatedAt: new Date() })
-      .where(eq(expenses.id, expenseId));
+    // Any member may change the tag on an expense they created. A form that
+    // posts no tagId at all keeps the existing tag rather than clearing it, so
+    // an older form cannot silently untag the rent; clearing is done by posting
+    // an empty value, which the modal always sends.
+    const tagId = formData.has('tagId') ? postedTagId : expense[0].tagId;
 
-    // Handle split changes if splitWith was provided
+    // Keyed off the resolved tagId, so clearing the type also clears the date.
+    // An absent field keeps the stored value, matching how tagId behaves.
+    const dueDate = formData.has('dueDate')
+      ? parseDueDate(formData.get('dueDate'), tagId)
+      : tagId === null
+        ? null
+        : expense[0].dueDate;
+
+    if (!(await tagBelongsToHousehold(tagId, householdId))) {
+      return fail(400, { error: 'Unknown tag' });
+    }
+
     // Get current splits
+
     const currentSplits = await db
       .select()
       .from(expenseSplits)
       .where(eq(expenseSplits.expenseId, expenseId));
 
-    // The new split list should include the creator + selected members
-    const newSplitUserIds = [...new Set([currentUserId, ...splitWith])];
+    // Who the expense is divided between. The split editor posts one row per
+    // participant; splitWith is the older shape and still works.
+    const requested = postedIds.length > 0 ? postedIds : splitWith;
+
+    // Only real members can be given a share, so a forged id cannot attach
+    // someone else's account to the expense.
+    const memberRows = await db
+      .select({ userId: householdMembers.userId })
+      .from(householdMembers)
+      .where(eq(householdMembers.householdId, householdId));
+    const memberIds = new Set(memberRows.map((m) => m.userId));
+
+    const newSplitUserIds = [...new Set([currentUserId, ...requested])].filter((id) =>
+      memberIds.has(id)
+    );
     const currentSplitUserIds = currentSplits.map((s) => s.userId);
+
+    // Work out the new shares before touching anything. calculateSplits honours
+    // overrides as given, so a client that pins every share could leave part of
+    // the expense unaccounted for; failing after the membership writes would
+    // leave the expense half edited.
+    //
+    // Posted amounts are honoured, so an uneven expense stays uneven through an
+    // edit. An amount only counts as an override when it differs from the even
+    // share, so an untouched form still divides evenly after any rounding.
+    const evenShare = expense[0].amount / newSplitUserIds.length;
+    const rebalanced = calculateSplits(
+      expense[0].amount,
+      newSplitUserIds.map((userId) => {
+        const p = posted.get(userId);
+        const isOverride = p !== undefined && Math.abs(p - evenShare) > 0.005;
+        return { userId, override: isOverride ? p : undefined };
+      }),
+      expense[0].creatorId
+    );
+
+    if (
+      !splitsMatchTotal(
+        expense[0].amount,
+        rebalanced.map((sp) => sp.amount)
+      )
+    ) {
+      return fail(400, {
+        error: 'The split amounts must add up to the expense total'
+      });
+    }
+
+    const amountByUser = new Map(rebalanced.map((r) => [r.userId, r.amount]));
 
     // Find splits to add (new members not currently in splits)
     const splitsToAdd = newSplitUserIds.filter((id) => !currentSplitUserIds.includes(id));
@@ -940,24 +1168,51 @@ export const actions: Actions = {
     const splitsToRemove = currentSplits.filter(
       (s) => !newSplitUserIds.includes(s.userId) && s.userId !== currentUserId
     );
+    const removedIds = new Set(splitsToRemove.map((s) => s.id));
 
-    // Add new splits
-    if (splitsToAdd.length > 0) {
-      const newSplits = splitsToAdd.map((userId) => ({
-        id: generateId(),
-        expenseId,
-        userId,
-        hasPaid: false,
-        paidAt: null
-      }));
-      await db.insert(expenseSplits).values(newSplits);
-    }
+    // The rows that survive this edit, so the amounts can be written without
+    // re-reading what was just changed.
+    const survivingSplits = currentSplits.filter((s) => !removedIds.has(s.id));
 
-    // Remove old splits
-    if (splitsToRemove.length > 0) {
-      const idsToRemove = splitsToRemove.map((s) => s.id);
-      await db.delete(expenseSplits).where(inArray(expenseSplits.id, idsToRemove));
-    }
+    // One transaction for the whole edit. Every write below depends on the
+    // others: an expense whose membership changed but whose amounts did not no
+    // longer sums to its total, and every balance is read straight from these
+    // stored amounts, so a partial write is silently wrong money rather than a
+    // visible error.
+    await db.transaction(async (tx) => {
+      // Only now that the split is known to reconcile: a rejected split used to
+      // leave the description saved and the amounts untouched.
+      await tx
+        .update(expenses)
+        .set({ description: description.trim(), isOptional, tagId, dueDate, updatedAt: new Date() })
+        .where(eq(expenses.id, expenseId));
+
+      if (splitsToAdd.length > 0) {
+        await tx.insert(expenseSplits).values(
+          splitsToAdd.map((userId) => ({
+            id: generateId(),
+            expenseId,
+            userId,
+            amount: amountByUser.get(userId) ?? 0,
+            hasPaid: false,
+            paidAt: null
+          }))
+        );
+      }
+
+      if (splitsToRemove.length > 0) {
+        await tx.delete(expenseSplits).where(inArray(expenseSplits.id, [...removedIds]));
+      }
+
+      // Rewrite every surviving share, not just the changed ones: adding or
+      // removing a person changes what everyone else owes.
+      for (const sp of survivingSplits) {
+        await tx
+          .update(expenseSplits)
+          .set({ amount: amountByUser.get(sp.userId) ?? 0 })
+          .where(eq(expenseSplits.id, sp.id));
+      }
+    });
 
     return { success: true };
   },
@@ -1010,11 +1265,13 @@ export const actions: Actions = {
       return fail(403, { error: 'You can only delete expenses you created' });
     }
 
-    // Delete expense splits first (foreign key constraint)
-    await db.delete(expenseSplits).where(eq(expenseSplits.expenseId, expenseId));
-
-    // Delete the expense
-    await db.delete(expenses).where(eq(expenses.id, expenseId));
+    // One transaction: the splits going without the expense would leave a row
+    // that counts toward the household total but owes nothing to anyone.
+    await db.transaction(async (tx) => {
+      // Splits first, for the foreign key constraint
+      await tx.delete(expenseSplits).where(eq(expenseSplits.expenseId, expenseId));
+      await tx.delete(expenses).where(eq(expenses.id, expenseId));
+    });
 
     return { success: true };
   },
@@ -1048,7 +1305,7 @@ export const actions: Actions = {
 
     const formData = await request.formData();
     const creatorId = formData.get('creatorId') as string;
-    const amount = parseFloat(formData.get('amount') as string);
+    const amount = parseAmount(formData.get('amount'));
     const description = formData.get('description') as string;
     const expenseDateStr = formData.get('expenseDate') as string;
     const isOptional = formData.get('isOptional') === 'on';
@@ -1068,8 +1325,8 @@ export const actions: Actions = {
     if (!creatorId) {
       return fail(400, { error: 'Creator is required' });
     }
-    if (!amount || amount <= 0) {
-      return fail(400, { error: 'Amount must be greater than 0' });
+    if (amount === null) {
+      return fail(400, { error: 'Enter an amount between 0 and 1,000,000' });
     }
     if (!description || description.trim() === '') {
       return fail(400, { error: 'Description is required' });
@@ -1118,17 +1375,6 @@ export const actions: Actions = {
     const expenseId = generateId();
     const now = new Date();
 
-    await db.insert(expenses).values({
-      id: expenseId,
-      householdId,
-      creatorId,
-      amount,
-      description: description.trim(),
-      isOptional,
-      createdAt: expenseDate,
-      updatedAt: now
-    });
-
     // Create expense splits for selected members + creator
     const allSplitUsers = [...new Set([creatorId, ...splitWith])];
 
@@ -1155,15 +1401,41 @@ export const actions: Actions = {
       return null;
     };
 
-    const splits = allSplitUsers.map((userId) => ({
-      id: generateId(),
-      expenseId,
-      userId,
-      hasPaid: userId === creatorId || paidMembers.includes(userId),
-      paidAt: getPaidAtDate(userId)
-    }));
+    // Amounts are stored, not derived, so an imported expense must set them
+    // too. Leaving them null would feed the legacy even-share fallback with
+    // brand new rows and block making the column NOT NULL later.
+    const importedSplits = calculateSplits(
+      amount,
+      allSplitUsers.map((userId) => ({ userId })),
+      creatorId
+    );
+    const importedByUser = new Map(importedSplits.map((sp) => [sp.userId, sp.amount]));
 
-    await db.insert(expenseSplits).values(splits);
+    // One transaction, as in createExpense: an expense with no split rows
+    // counts toward the household total while owing nothing to anyone.
+    await db.transaction(async (tx) => {
+      await tx.insert(expenses).values({
+        id: expenseId,
+        householdId,
+        creatorId,
+        amount,
+        description: description.trim(),
+        isOptional,
+        createdAt: expenseDate,
+        updatedAt: now
+      });
+
+      await tx.insert(expenseSplits).values(
+        allSplitUsers.map((userId) => ({
+          id: generateId(),
+          expenseId,
+          userId,
+          amount: importedByUser.get(userId) ?? 0,
+          hasPaid: userId === creatorId || paidMembers.includes(userId),
+          paidAt: getPaidAtDate(userId)
+        }))
+      );
+    });
 
     return { success: true };
   },
@@ -1263,7 +1535,8 @@ export const actions: Actions = {
     const formData = await request.formData();
     const toUserId = formData.get('toUserId') as string;
     const customMessage = (formData.get('customMessage') as string)?.trim() || null;
-    const amountOwed = parseFloat(formData.get('amountOwed') as string);
+    // Display only, but a NaN or Infinity here would be emailed to someone
+    const amountOwed = parseAmount(formData.get('amountOwed')) ?? 0;
 
     if (!toUserId) {
       return fail(400, { error: 'Recipient is required' });
@@ -1459,6 +1732,139 @@ export const actions: Actions = {
       .update(households)
       .set({ name, updatedAt: new Date() })
       .where(eq(households.id, householdId));
+
+    return { success: true };
+  },
+
+  createTag: async ({ request, locals, params }) => {
+    const householdId = params.id;
+    // Admin only, like the rest of tag management: a tag is a household-wide
+    // label that changes how every member sees an expense, so who defines the
+    // vocabulary is an admin decision.
+    await requireAdmin(locals, householdId, 'manage expense tags');
+
+    const formData = await request.formData();
+    const name = (formData.get('name') as string)?.trim();
+    const color = (formData.get('color') as string)?.trim() || null;
+
+    if (!name) {
+      return fail(400, { error: 'Tag name is required' });
+    }
+
+    const existing = await db
+      .select({ id: expenseTags.id })
+      .from(expenseTags)
+      .where(
+        and(
+          eq(expenseTags.householdId, householdId),
+          sql`lower(${expenseTags.name}) = lower(${name})`
+        )
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      return fail(400, { error: 'That tag already exists' });
+    }
+
+    const maxOrder = await db
+      .select({ max: sql<number>`coalesce(max(${expenseTags.sortOrder}), -1)` })
+      .from(expenseTags)
+      .where(eq(expenseTags.householdId, householdId));
+
+    await db.insert(expenseTags).values({
+      id: generateId(),
+      householdId,
+      name,
+      color,
+      sortOrder: (maxOrder[0]?.max ?? -1) + 1,
+      createdAt: new Date()
+    });
+
+    return { success: true };
+  },
+
+  updateTag: async ({ request, locals, params }) => {
+    const householdId = params.id;
+    // Admin only: renaming a tag renames it for everyone who can see it.
+    await requireAdmin(locals, householdId, 'manage expense tags');
+
+    const formData = await request.formData();
+    const tagId = formData.get('tagId') as string;
+    const name = (formData.get('name') as string)?.trim();
+    const color = (formData.get('color') as string)?.trim() || null;
+
+    if (!tagId || !name) {
+      return fail(400, { error: 'Tag name is required' });
+    }
+
+    const clash = await db
+      .select({ id: expenseTags.id })
+      .from(expenseTags)
+      .where(
+        and(
+          eq(expenseTags.householdId, householdId),
+          ne(expenseTags.id, tagId),
+          sql`lower(${expenseTags.name}) = lower(${name})`
+        )
+      )
+      .limit(1);
+
+    if (clash.length > 0) {
+      return fail(400, { error: 'That tag already exists' });
+    }
+
+    const result = await db
+      .update(expenseTags)
+      .set({ name, color })
+      .where(and(eq(expenseTags.id, tagId), eq(expenseTags.householdId, householdId)));
+
+    if (result.rowsAffected === 0) {
+      return fail(404, { error: 'Tag not found' });
+    }
+
+    return { success: true };
+  },
+
+  deleteTag: async ({ request, locals, params }) => {
+    const householdId = params.id;
+    // Untags every expense that used it, and leaves no record of what the tag
+    // was afterwards.
+    await requireAdmin(locals, householdId, 'manage expense tags');
+
+    const formData = await request.formData();
+    const tagId = formData.get('tagId') as string;
+
+    if (!tagId) {
+      return fail(400, { error: 'Tag is required' });
+    }
+
+    // Untag the expenses first, then remove the type, in one transaction so an
+    // expense can never point at a type that no longer exists. The due date
+    // goes with it: a date is only meaningful on a high priority expense.
+    //
+    // A missing type throws so the untag rolls back. Returning the 404 after
+    // the transaction committed would report "not found" having already
+    // written, which is exactly the protection the transaction is here for.
+    const NOT_FOUND = 'tag-not-found';
+    try {
+      await db.transaction(async (tx) => {
+        await tx
+          .update(expenses)
+          .set({ tagId: null, dueDate: null, updatedAt: new Date() })
+          .where(and(eq(expenses.householdId, householdId), eq(expenses.tagId, tagId)));
+
+        const result = await tx
+          .delete(expenseTags)
+          .where(and(eq(expenseTags.id, tagId), eq(expenseTags.householdId, householdId)));
+
+        if (result.rowsAffected === 0) throw new Error(NOT_FOUND);
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message === NOT_FOUND) {
+        return fail(404, { error: 'Type not found' });
+      }
+      throw err;
+    }
 
     return { success: true };
   },

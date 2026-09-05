@@ -1,13 +1,15 @@
 <script lang="ts">
+  import { calculateSplits, isUnevenSplit, shareFor } from '$lib/splits';
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
-  import MemberSelect from '$lib/components/MemberSelect.svelte';
+  import SplitEditor from '$lib/components/SplitEditor.svelte';
   import { enhance } from '$app/forms';
 
   type ExpenseSplit = {
     userId: string;
+    amount?: number | null;
     hasPaid: boolean;
     paidAt: Date | null;
   };
@@ -17,6 +19,8 @@
     description: string;
     amount: number;
     isOptional: boolean;
+    tagId: string | null;
+    dueDate: string | null;
     creatorId: string;
     createdAt: Date;
     splits: ExpenseSplit[];
@@ -28,22 +32,39 @@
     displayName: string | null;
   };
 
+  type Tag = { id: string; name: string; color: string | null };
+
   let {
     open = $bindable(false),
     expense = null,
-    members = []
+    members = [],
+    tags = []
   }: {
     open: boolean;
     expense: Expense | null;
     members: Member[];
+    tags?: Tag[];
   } = $props();
 
   let description = $state('');
   let isOptional = $state(false);
+  let tagId = $state('');
+  let dueDate = $state('');
   let selectedMembers = $state<string[]>([]);
+  // Per-person amounts, seeded from what the expense already stores so an
+  // uneven split opens showing the real shares rather than an even guess.
+  let overrides = $state<Record<string, number>>({});
+  // Set false by the split editor while the pinned amounts cannot reconcile
+  let splitValid = $state(true);
 
   // Get members excluding the expense creator (they're always included)
   let otherMembers = $derived(members.filter((m) => m.id !== expense?.creatorId));
+
+  // The payer row names the creator, who is not necessarily the person editing
+  let creatorLabel = $derived.by(() => {
+    const creator = members.find((m) => m.id === expense?.creatorId);
+    return creator ? getMemberDisplayName(creator) : 'Paid by';
+  });
 
   // Track the original split member IDs when expense is loaded
   let originalSplitMemberIds = $state<string[]>([]);
@@ -53,29 +74,74 @@
     if (expense) {
       description = expense.description;
       isOptional = expense.isOptional;
+      tagId = expense.tagId ?? '';
+      dueDate = expense.dueDate ?? '';
       // Initialize selected members from current splits (excluding creator)
       const splitMemberIds = expense.splits
         .filter((s) => s.userId !== expense.creatorId)
         .map((s) => s.userId);
       selectedMembers = splitMemberIds;
       originalSplitMemberIds = splitMemberIds;
+
+      // Pin the current shares only when the expense is actually uneven, so an
+      // edit cannot quietly flatten a 600/700 rent back to an even split. An
+      // evenly split expense is left unpinned: pinning it would leave nothing
+      // to absorb a newly added member, landing them on zero.
+      const uneven = isUnevenSplit(
+        expense.amount,
+        expense.splits.map((sp) => ({ userId: sp.userId, amount: shareFor(expense, sp.userId) })),
+        expense.creatorId
+      );
+
+      const seeded: Record<string, number> = {};
+      if (uneven) {
+        for (const sp of expense.splits) {
+          seeded[sp.userId] = shareFor(expense, sp.userId);
+        }
+      }
+      overrides = seeded;
     }
   });
 
-  // Calculate the original and new split counts (including creator)
-  let originalSplitCount = $derived(originalSplitMemberIds.length + 1);
-  let newSplitCount = $derived(selectedMembers.length + 1);
+  // What each person owes now, straight from the stored splits.
+  let originalShares = $derived.by(() => {
+    const map = new Map<string, number>();
+    if (!expense) return map;
+    for (const sp of expense.splits) map.set(sp.userId, shareFor(expense, sp.userId));
+    return map;
+  });
 
-  // Calculate shares
-  let originalShare = $derived(expense ? expense.amount / originalSplitCount : 0);
-  let newShare = $derived(expense ? expense.amount / newSplitCount : 0);
-  let shareDifference = $derived(newShare - originalShare);
+  // What each person would owe once this edit is saved. Mirrors the server:
+  // pinned amounts are honoured, anything else divides what is left.
+  let newShares = $derived.by(() => {
+    const map = new Map<string, number>();
+    if (!expense) return map;
+    const participants = [...new Set([expense.creatorId, ...selectedMembers])];
+    const evenShare = expense.amount / participants.length;
+    const result = calculateSplits(
+      expense.amount,
+      participants.map((userId) => {
+        const p = overrides[userId];
+        const isOverride = p !== undefined && Math.abs(p - evenShare) > 0.005;
+        return { userId, override: isOverride ? p : undefined };
+      }),
+      expense.creatorId
+    );
+    for (const r of result) map.set(r.userId, r.amount);
+    return map;
+  });
 
-  // Check if splits have changed
+  // Changed if the membership moved or if anyone's amount did: editing only
+  // the amounts still needs settling with whoever already paid.
   let splitsChanged = $derived(() => {
     if (originalSplitMemberIds.length !== selectedMembers.length) return true;
     const originalSet = new Set(originalSplitMemberIds);
-    return selectedMembers.some((id) => !originalSet.has(id));
+    if (selectedMembers.some((id) => !originalSet.has(id))) return true;
+    for (const [userId, before] of originalShares) {
+      const after = newShares.get(userId);
+      if (after === undefined || Math.abs(after - before) > 0.005) return true;
+    }
+    return false;
   });
 
   // Get members who have already paid
@@ -106,43 +172,75 @@
       wasRemoved: boolean;
     }> = [];
 
+    // Each person is settled against their own before and after amounts, which
+    // differ per person once a split is uneven.
     for (const paidMember of paidMembers) {
       const isStillIncluded = selectedMembers.includes(paidMember.userId);
+      const before = originalShares.get(paidMember.userId) ?? 0;
 
       if (!isStillIncluded) {
-        // Member was removed - refund their entire original share
+        // Member was removed - refund what they actually paid
         actions.push({
           userId: paidMember.userId,
           name: paidMember.name,
           type: 'refund',
-          amount: originalShare,
+          amount: before,
           wasRemoved: true
         });
-      } else if (shareDifference !== 0) {
-        // Member still included but share changed
-        if (shareDifference > 0) {
-          // Share increased - request more money
-          actions.push({
-            userId: paidMember.userId,
-            name: paidMember.name,
-            type: 'request',
-            amount: shareDifference,
-            wasRemoved: false
-          });
-        } else {
-          // Share decreased - refund the difference
-          actions.push({
-            userId: paidMember.userId,
-            name: paidMember.name,
-            type: 'refund',
-            amount: Math.abs(shareDifference),
-            wasRemoved: false
-          });
-        }
+        continue;
       }
+
+      const difference = (newShares.get(paidMember.userId) ?? 0) - before;
+      if (Math.abs(difference) <= 0.005) continue;
+
+      actions.push({
+        userId: paidMember.userId,
+        name: paidMember.name,
+        type: difference > 0 ? 'request' : 'refund',
+        amount: Math.abs(difference),
+        wasRemoved: false
+      });
     }
 
     return actions;
+  });
+
+  // Everyone whose amount moves, for the change summary. Covers people who are
+  // not part of the settlement list too, since they may owe more without having
+  // paid anything yet.
+  let changedShares = $derived.by(() => {
+    if (!expense) return [];
+    const rows: Array<{
+      userId: string;
+      name: string;
+      before: number;
+      after: number;
+      difference: number;
+      wasRemoved: boolean;
+    }> = [];
+    const everyone = new Set([...originalShares.keys(), ...newShares.keys()]);
+    for (const userId of everyone) {
+      const before = originalShares.get(userId) ?? 0;
+      const wasRemoved = !newShares.has(userId);
+      const after = newShares.get(userId) ?? 0;
+      const difference = after - before;
+      if (!wasRemoved && Math.abs(difference) <= 0.005) continue;
+      const member = members.find((m) => m.id === userId);
+      rows.push({
+        userId,
+        name:
+          userId === expense.creatorId
+            ? creatorLabel
+            : member
+              ? getMemberDisplayName(member)
+              : 'Unknown',
+        before,
+        after,
+        difference,
+        wasRemoved
+      });
+    }
+    return rows;
   });
 
   // Check if there are any settlement actions needed
@@ -175,6 +273,9 @@
     open = false;
     selectedMembers = [];
     originalSplitMemberIds = [];
+    overrides = {};
+    splitValid = true;
+    dueDate = '';
   }
 </script>
 
@@ -212,8 +313,49 @@
           </span>
         </div>
 
+        {#if tags.length > 0}
+          <div class="form-group">
+            <label for="edit-expense-tag" class="tag-label">High Priority Type</label>
+            <select bind:value={tagId} name="tagId" id="edit-expense-tag">
+              <option value="">Normal Expense</option>
+              {#each tags as t (t.id)}
+                <option value={t.id}>{t.name}</option>
+              {/each}
+            </select>
+            <p class="tag-help">
+              Setting this expense as a high priority type shows everyone a banner and lets you set
+              a due date.
+            </p>
+          </div>
+
+          <!-- Only meaningful on a high priority expense, and optional even then -->
+          {#if tagId !== ''}
+            <div class="form-group">
+              <label for="edit-expense-due" class="tag-label">Due date (optional)</label>
+              <input bind:value={dueDate} type="date" name="dueDate" id="edit-expense-due" />
+            </div>
+          {:else}
+            <!-- Must still post, or an absent field would keep the old date on
+                 an expense whose type was just cleared. -->
+            <input type="hidden" name="dueDate" value="" />
+          {/if}
+        {:else}
+          <!-- No types defined, but the field must still post: an absent tagId
+               keeps the existing type rather than clearing it. -->
+          <input type="hidden" name="tagId" value={tagId} />
+        {/if}
+
         <div class="form-group split-section">
-          <MemberSelect members={otherMembers} bind:selectedMembers initializeAll={false}>
+          <SplitEditor
+            members={otherMembers}
+            bind:selectedMembers
+            bind:overrides
+            bind:valid={splitValid}
+            total={expense.amount}
+            payerId={expense.creatorId}
+            payerLabel={creatorLabel}
+            initializeAll={false}
+          >
             {#snippet memberExtra({ member, isChecked })}
               {@const existingSplit = expense?.splits.find((s) => s.userId === member.id)}
               {@const hasPaid = existingSplit?.hasPaid ?? false}
@@ -223,7 +365,7 @@
                 </span>
               {/if}
             {/snippet}
-          </MemberSelect>
+          </SplitEditor>
         </div>
 
         <div class="form-group">
@@ -234,28 +376,35 @@
           />
         </div>
 
-        <!-- Share change info -->
+        <!-- Who moves, and by how much. Listed per person because an uneven
+             split has no single "share per person" to quote. -->
         {#if splitsChanged()}
           <div class="share-change-info">
-            <div class="share-row">
-              <span class="share-label">Original share per person:</span>
-              <span class="share-value">{formatCurrency(originalShare)}</span>
-            </div>
-            <div class="share-row">
-              <span class="share-label">New share per person:</span>
-              <span
-                class="share-value"
-                class:increased={shareDifference > 0}
-                class:decreased={shareDifference < 0}
-              >
-                {formatCurrency(newShare)}
-                {#if shareDifference !== 0}
-                  <span class="share-diff">
-                    ({shareDifference > 0 ? '+' : ''}{formatCurrency(shareDifference)})
-                  </span>
-                {/if}
-              </span>
-            </div>
+            {#each changedShares as row (row.userId)}
+              <div class="share-row">
+                <span class="share-label">{row.name}</span>
+                <span
+                  class="share-value"
+                  class:increased={row.difference > 0}
+                  class:decreased={row.difference < 0}
+                >
+                  {#if row.wasRemoved}
+                    <span class="share-was">{formatCurrency(row.before)}</span>
+                    removed
+                  {:else}
+                    {#if row.difference !== 0}
+                      <span class="share-was">{formatCurrency(row.before)}</span>
+                    {/if}
+                    {formatCurrency(row.after)}
+                    {#if row.difference !== 0}
+                      <span class="share-diff">
+                        ({row.difference > 0 ? '+' : ''}{formatCurrency(row.difference)})
+                      </span>
+                    {/if}
+                  {/if}
+                </span>
+              </div>
+            {/each}
           </div>
         {/if}
 
@@ -341,6 +490,7 @@
       type="submit"
       variant={hasSettlementActions ? 'danger' : 'primary'}
       form="edit-expense-form"
+      disabled={!splitValid}
     >
       {hasSettlementActions ? 'Save Changes (Settlement Required)' : 'Save Changes'}
     </Button>
@@ -348,6 +498,42 @@
 </Modal>
 
 <style>
+  .tag-label {
+    display: block;
+    margin-bottom: var(--space-xs);
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+  }
+
+  select,
+  input[type='date'] {
+    width: 100%;
+    /* 16px minimum stops iOS Safari zooming the page on focus */
+    font-size: 16px;
+    min-height: 44px;
+    padding: 0 var(--space-sm);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    font-family: inherit;
+  }
+
+  select:focus,
+  input[type='date']:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -1px;
+    border-color: var(--color-primary);
+  }
+
+  .tag-help {
+    margin: var(--space-xs) 0 0;
+    color: var(--color-text-tertiary);
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+
   .form-group {
     margin-bottom: var(--space-lg);
   }
@@ -422,6 +608,13 @@
 
   .share-value.decreased {
     color: var(--color-success, #22c55e);
+  }
+
+  .share-was {
+    margin-right: var(--space-xs);
+    color: var(--color-text-tertiary);
+    text-decoration: line-through;
+    font-weight: 400;
   }
 
   .share-diff {

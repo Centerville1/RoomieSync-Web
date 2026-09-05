@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { shareFor } from '$lib/splits';
   import { onMount } from 'svelte';
 
   type Member = {
@@ -9,6 +10,7 @@
 
   type Split = {
     userId: string;
+    amount: number | null;
     hasPaid: boolean;
     paidAt: Date | null;
   };
@@ -18,6 +20,8 @@
     description: string;
     amount: number;
     isOptional: boolean;
+    tagId: string | null;
+    dueDate: string | null;
     creatorId: string;
     createdAt: Date;
     splits: Split[];
@@ -41,6 +45,8 @@
     onLoadMore?: () => Promise<void>;
     hasMore?: boolean;
     currentUserId?: string;
+    /** The household's expense tags, for colouring tagged rows */
+    tags?: Array<{ id: string; name: string; color: string | null }>;
     selectedExpenseIds?: Set<string>;
     onSelectionChange?: (selectedIds: Set<string>) => void;
     /**
@@ -65,6 +71,7 @@
     onLoadMore,
     hasMore = false,
     currentUserId,
+    tags = [],
     selectedExpenseIds = new Set(),
     onSelectionChange,
     allSelectableIds = new Set(),
@@ -294,8 +301,14 @@
     }).format(new Date(date));
   }
 
-  function getUserShare(expense: Expense): number {
-    return expense.amount / expense.splits.length;
+  function tagFor(expense: Expense) {
+    return expense.tagId ? tags.find((t) => t.id === expense.tagId) : undefined;
+  }
+
+  function getUserShare(expense: Expense, memberId: string): number {
+    // Each cell belongs to one member, so it shows that member's own share.
+    // With uneven splits these differ from person to person.
+    return shareFor(expense, memberId);
   }
 
   function getPaymentStatus(
@@ -491,12 +504,15 @@
           {@const isSelectable = isSelectableByCurrentUser(expense)}
           {@const isSelected = selectedExpenseIds.has(expense.id)}
           {@const needsToPay = isSelectable && !expense.isOptional}
+          {@const tag = tagFor(expense)}
           <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
           <div
             class="grid-row"
             class:selectable={isSelectable}
             class:selected={isSelected}
             class:needs-to-pay={needsToPay}
+            class:tagged={!!tag}
+            style={tag ? `--tag-color: ${tag.color ?? '#6b7fff'}` : undefined}
             onclick={isSelectable ? () => toggleExpenseSelection(expense.id) : undefined}
             onkeydown={isSelectable
               ? (e) => {
@@ -554,6 +570,9 @@
                     <div class="expense-info">
                       <span class="expense-description" title={expense.description}>
                         {expense.description}
+                        {#if tag}
+                          <span class="tag-badge">{tag.name}</span>
+                        {/if}
                         {#if expense.isOptional}
                           <span class="optional-badge">Opt</span>
                         {/if}
@@ -585,7 +604,7 @@
                       <span class="status-icon paid">✓</span>
                       <span class="paid-info you-paid">
                         <span class="text-label">You paid </span>{formatCurrency(
-                          getUserShare(expense)
+                          getUserShare(expense, member.id)
                         )}
                         {#if paidAt}
                           <span class="paid-date">{formatShortDateTime(paidAt)}</span>
@@ -598,14 +617,14 @@
                       {#if isMyExpense && paidAt}
                         <span class="paid-info">
                           <span class="text-label">Paid you </span>{formatCurrency(
-                            getUserShare(expense)
+                            getUserShare(expense, member.id)
                           )}
                           <span class="paid-date">{formatShortDateTime(paidAt)}</span>
                         </span>
                       {:else if isMyColumn && paidAt}
                         <span class="paid-info you-paid">
                           <span class="text-label">You paid </span>{formatCurrency(
-                            getUserShare(expense)
+                            getUserShare(expense, member.id)
                           )}
                           <span class="paid-date">{formatShortDateTime(paidAt)}</span>
                         </span>
@@ -618,7 +637,7 @@
                       <span class="status-icon optional" title="Optional - Unpaid">?</span>
                       <span class="optional-amount"
                         ><span class="optional-badge">Optional</span>
-                        {formatCurrency(getUserShare(expense))}</span
+                        {formatCurrency(getUserShare(expense, member.id))}</span
                       >
                     </div>
                   {:else}
@@ -633,13 +652,13 @@
                       {#if isMyExpense}
                         <span class="owes-info"
                           ><span class="text-label">Owes you </span>{formatCurrency(
-                            getUserShare(expense)
+                            getUserShare(expense, member.id)
                           )}</span
                         >
                       {:else if isMyColumn}
                         <span class="you-owe-info"
                           ><span class="text-label">You owe </span>{formatCurrency(
-                            getUserShare(expense)
+                            getUserShare(expense, member.id)
                           )}</span
                         >
                       {/if}
@@ -933,6 +952,26 @@
 
   .grid-cell.first-column {
     border-right: 3px solid rgba(255, 255, 255, 0.6);
+  }
+
+  /* Tagged rows carry a stripe in their own colour. Kept to the row edge so it
+     never competes with the red unpaid fill or the green paid tick. */
+  .grid-row.tagged {
+    box-shadow: inset 4px 0 0 var(--tag-color);
+  }
+
+  .tag-badge {
+    display: inline-block;
+    padding: 1px 0.4rem;
+    border-radius: 999px;
+    border: 1px solid var(--tag-color, var(--color-secondary));
+    background-color: color-mix(in srgb, var(--tag-color, var(--color-secondary)) 20%, transparent);
+    color: var(--color-text-primary);
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
   }
 
   .grid-row.selectable .grid-cell {

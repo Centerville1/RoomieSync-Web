@@ -5,11 +5,17 @@
   export let id = '';
   export let name = '';
   export let value = '';
+
+  // Most callers pass no id, which left `for=""` pointing at nothing: the label
+  // read correctly to a screen reader but did not toggle the box when tapped.
+  // Fall back to a generated id so the association always holds.
+  const fallbackId = `checkbox-${Math.random().toString(36).slice(2, 10)}`;
+  $: inputId = id || fallbackId;
 </script>
 
 <div class="checkbox-group">
   <input
-    {id}
+    id={inputId}
     {name}
     value={value || 'on'}
     type="checkbox"
@@ -19,7 +25,7 @@
     on:change
   />
   {#if label}
-    <label for={id} class="label">{label}</label>
+    <label for={inputId} class="label">{label}</label>
   {/if}
 </div>
 
@@ -71,5 +77,10 @@
     color: var(--color-text-primary);
     cursor: pointer;
     user-select: none;
+  }
+
+  /* Give the label a real tap target rather than just its text height */
+  .checkbox-group {
+    padding: var(--space-xs) 0;
   }
 </style>
