@@ -6,8 +6,9 @@
 
   type Tag = { id: string; name: string; color: string | null; sortOrder: number };
 
-  // Only reachable by admins: tags are household-wide labels, so who defines
-  // them is an admin decision. The server enforces this on every action.
+  // Only reachable by admins: a priority type is a household-wide label, so who
+  // defines the vocabulary is an admin decision. Applying one is open to every
+  // member. The server enforces both on every action.
   let {
     open = $bindable(false),
     tags = [],
@@ -51,12 +52,13 @@
   }
 </script>
 
-<Modal bind:open title="Expense Tags" size="md">
+<Modal bind:open title="Priority Expense Types" size="md">
   {#snippet children()}
     <p class="intro">
-      Tags mark the expenses that matter: rent, utilities, anything the household cannot let slide.
-      A tagged expense gets its own colour in the grid and raises a banner until you have paid your
-      share.
+      Types mark the expenses that cannot slide: rent, utilities, anything the household has to keep
+      current. Most expenses need none. One that has a type gets its own colour in the grid and
+      raises a banner for everyone who still owes on it. Any member can apply a type; only admins
+      can add, rename or remove one.
     </p>
 
     <form
@@ -80,7 +82,7 @@
         autocapitalize="words"
         required
       />
-      <select bind:value={newColor} name="color" aria-label="Tag colour">
+      <select bind:value={newColor} name="color" aria-label="Type colour">
         {#each PALETTE as c (c.value)}
           <option value={c.value}>{c.label}</option>
         {/each}
@@ -91,7 +93,7 @@
     </form>
 
     {#if tags.length === 0}
-      <p class="empty">No tags yet. Add one to start marking important expenses.</p>
+      <p class="empty">No types yet. Add one to start marking the bills that cannot slide.</p>
     {:else}
       <ul class="tag-list">
         {#each tags as tag (tag.id)}
@@ -111,7 +113,7 @@
               >
                 <input type="hidden" name="tagId" value={tag.id} />
                 <input bind:value={editName} name="name" type="text" required autocomplete="off" />
-                <select bind:value={editColor} name="color" aria-label="Tag colour">
+                <select bind:value={editColor} name="color" aria-label="Type colour">
                   {#each PALETTE as c (c.value)}
                     <option value={c.value}>{c.label}</option>
                   {/each}
@@ -134,7 +136,7 @@
               >
                 <input type="hidden" name="tagId" value={tag.id} />
                 <span class="confirm-text">
-                  Delete “{tag.name}”? Expenses keep their amounts but lose the tag.
+                  Delete “{tag.name}”? Expenses keep their amounts but lose the type.
                 </span>
                 <Button type="submit" variant="danger" size="sm">Delete</Button>
                 <button type="button" class="text-btn" onclick={reset}>Cancel</button>

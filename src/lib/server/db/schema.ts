@@ -98,6 +98,12 @@ export const expenses = sqliteTable('expenses', {
   // are ordinary, and set null on tag deletion so removing a tag never deletes
   // expenses.
   tagId: text('tag_id'),
+  // When a high priority expense is due, shown in its banner. Display only for
+  // now: nothing sorts, sends or escalates on it. Stored as a date-only string
+  // (YYYY-MM-DD) rather than a timestamp, because "rent is due on the 1st" has
+  // no meaningful time of day and a timestamp would drift across time zones.
+  // Only meaningful alongside a tagId; cleared when the type is cleared.
+  dueDate: text('due_date'),
   receiptUrl: text('receipt_url'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()

@@ -20,6 +20,7 @@
     amount: number;
     isOptional: boolean;
     tagId: string | null;
+    dueDate: string | null;
     creatorId: string;
     createdAt: Date;
     splits: ExpenseSplit[];
@@ -48,6 +49,7 @@
   let description = $state('');
   let isOptional = $state(false);
   let tagId = $state('');
+  let dueDate = $state('');
   let selectedMembers = $state<string[]>([]);
   // Per-person amounts, seeded from what the expense already stores so an
   // uneven split opens showing the real shares rather than an even guess.
@@ -73,6 +75,7 @@
       description = expense.description;
       isOptional = expense.isOptional;
       tagId = expense.tagId ?? '';
+      dueDate = expense.dueDate ?? '';
       // Initialize selected members from current splits (excluding creator)
       const splitMemberIds = expense.splits
         .filter((s) => s.userId !== expense.creatorId)
@@ -272,6 +275,7 @@
     originalSplitMemberIds = [];
     overrides = {};
     splitValid = true;
+    dueDate = '';
   }
 </script>
 
@@ -309,6 +313,38 @@
           </span>
         </div>
 
+        {#if tags.length > 0}
+          <div class="form-group">
+            <label for="edit-expense-tag" class="tag-label">High Priority Type</label>
+            <select bind:value={tagId} name="tagId" id="edit-expense-tag">
+              <option value="">Normal Expense</option>
+              {#each tags as t (t.id)}
+                <option value={t.id}>{t.name}</option>
+              {/each}
+            </select>
+            <p class="tag-help">
+              Setting this expense as a high priority type shows everyone a banner and lets you set
+              a due date.
+            </p>
+          </div>
+
+          <!-- Only meaningful on a high priority expense, and optional even then -->
+          {#if tagId !== ''}
+            <div class="form-group">
+              <label for="edit-expense-due" class="tag-label">Due date (optional)</label>
+              <input bind:value={dueDate} type="date" name="dueDate" id="edit-expense-due" />
+            </div>
+          {:else}
+            <!-- Must still post, or an absent field would keep the old date on
+                 an expense whose type was just cleared. -->
+            <input type="hidden" name="dueDate" value="" />
+          {/if}
+        {:else}
+          <!-- No types defined, but the field must still post: an absent tagId
+               keeps the existing type rather than clearing it. -->
+          <input type="hidden" name="tagId" value={tagId} />
+        {/if}
+
         <div class="form-group split-section">
           <SplitEditor
             members={otherMembers}
@@ -331,25 +367,6 @@
             {/snippet}
           </SplitEditor>
         </div>
-
-        {#if tags.length > 0}
-          <div class="form-group">
-            <label for="edit-expense-tag" class="tag-label">Type (optional)</label>
-            <select bind:value={tagId} name="tagId" id="edit-expense-tag">
-              <option value="">No tag</option>
-              {#each tags as t (t.id)}
-                <option value={t.id}>{t.name}</option>
-              {/each}
-            </select>
-            <p class="tag-help">
-              Marks the expense as important and flags it for all household members.
-            </p>
-          </div>
-        {:else}
-          <!-- No tags defined, but the field must still post: editExpense reads a
-               missing tagId as "clear the tag". -->
-          <input type="hidden" name="tagId" value={tagId} />
-        {/if}
 
         <div class="form-group">
           <Checkbox
@@ -489,7 +506,8 @@
     color: var(--color-text-secondary);
   }
 
-  select {
+  select,
+  input[type='date'] {
     width: 100%;
     /* 16px minimum stops iOS Safari zooming the page on focus */
     font-size: 16px;
@@ -502,7 +520,8 @@
     font-family: inherit;
   }
 
-  select:focus {
+  select:focus,
+  input[type='date']:focus {
     outline: 2px solid var(--color-primary);
     outline-offset: -1px;
     border-color: var(--color-primary);

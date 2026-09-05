@@ -21,6 +21,7 @@
     amount: number;
     isOptional: boolean;
     tagId: string | null;
+    dueDate: string | null;
     creatorId: string;
     createdAt: Date;
     splits: Split[];

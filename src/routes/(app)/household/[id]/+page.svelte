@@ -50,6 +50,7 @@
     amount: number;
     isOptional: boolean;
     tagId: string | null;
+    dueDate: string | null;
     creatorId: string;
     createdAt: Date;
     splits: { userId: string; amount: number | null; hasPaid: boolean; paidAt: Date | null }[];
@@ -189,7 +190,7 @@
   const tagDebts = $derived.by(() => {
     const byTag = new Map<
       string,
-      { tag: (typeof data.tags)[number]; total: number; ids: string[] }
+      { tag: (typeof data.tags)[number]; total: number; ids: string[]; dueDate: string | null }
     >();
     for (const e of data.unpaidExpenses) {
       if (!e.tagId) continue;
@@ -197,13 +198,36 @@
       if (!tag) continue;
       const mine = e.splits.find((sp) => sp.userId === data.currentUserId);
       if (!mine || mine.hasPaid) continue;
-      const entry = byTag.get(tag.id) ?? { tag, total: 0, ids: [] };
+      const entry = byTag.get(tag.id) ?? { tag, total: 0, ids: [], dueDate: null };
       entry.total += shareFor(e, data.currentUserId);
       entry.ids.push(e.id);
+      // Several expenses can share a type, so the banner shows the soonest date
+      if (e.dueDate && (entry.dueDate === null || e.dueDate < entry.dueDate)) {
+        entry.dueDate = e.dueDate;
+      }
       byTag.set(tag.id, entry);
     }
     return [...byTag.values()].sort((a, b) => b.total - a.total);
   });
+
+  // Parsed as UTC: a bare "2026-09-01" through the local Date constructor lands
+  // on the previous day for anyone west of UTC.
+  function formatDueDate(iso: string) {
+    const [y, m, d] = iso.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'UTC'
+    });
+  }
+
+  function daysUntil(iso: string) {
+    const [y, m, d] = iso.split('-').map(Number);
+    const due = Date.UTC(y, m - 1, d);
+    const now = new Date();
+    const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.round((due - today) / 86400000);
+  }
 
   function payTag(ids: string[]) {
     selectedExpenseIds = new Set(ids);
@@ -282,6 +306,20 @@
             You owe {formatCurrency(debt.total)} across {debt.ids.length}
             {debt.ids.length === 1 ? 'expense' : 'expenses'}
           </span>
+          {#if debt.dueDate}
+            {@const days = daysUntil(debt.dueDate)}
+            <span class="tag-due" class:overdue={days < 0} class:soon={days >= 0 && days <= 3}>
+              {#if days < 0}
+                Was due {formatDueDate(debt.dueDate)}
+              {:else if days === 0}
+                Due today
+              {:else if days === 1}
+                Due tomorrow
+              {:else}
+                Due {formatDueDate(debt.dueDate)}
+              {/if}
+            </span>
+          {/if}
         </div>
         <Button variant="primary" size="sm" on:click={() => payTag(debt.ids)}>
           Pay {debt.tag.name}
@@ -352,7 +390,7 @@
           </div>
           {#if isAdmin}
             <button type="button" class="manage-tags" onclick={() => (showTagModal = true)}>
-              Tags
+              Priority Expense Types
             </button>
           {/if}
           {#if allSelectableExpenseIds.size > 0}
@@ -599,6 +637,26 @@
   .tag-banner-text strong {
     color: var(--color-text-primary);
     font-size: 0.95rem;
+  }
+
+  .tag-due {
+    display: inline-block;
+    margin-top: 2px;
+    padding: 1px 0.45rem;
+    border-radius: 999px;
+    background-color: color-mix(in srgb, var(--tag-color) 20%, transparent);
+    color: var(--color-text-primary);
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+
+  .tag-due.soon {
+    background-color: color-mix(in srgb, var(--color-warning) 26%, transparent);
+  }
+
+  .tag-due.overdue {
+    background-color: color-mix(in srgb, var(--color-error) 22%, transparent);
+    color: var(--color-error);
   }
 
   .tag-banner-text span {

@@ -314,6 +314,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
       amount: number;
       isOptional: boolean;
       tagId: string | null;
+      dueDate: string | null;
       creatorId: string;
       createdAt: Date;
       splits: { userId: string; amount: number | null; hasPaid: boolean; paidAt: Date | null }[];
@@ -328,6 +329,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
         amount: row.expense.amount,
         isOptional: row.expense.isOptional,
         tagId: row.expense.tagId,
+        dueDate: row.expense.dueDate,
         creatorId: row.expense.creatorId,
         createdAt: row.expense.createdAt,
         splits: []
@@ -367,6 +369,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
       amount: number;
       isOptional: boolean;
       tagId: string | null;
+      dueDate: string | null;
       creatorId: string;
       createdAt: Date;
       splits: { userId: string; amount: number | null; hasPaid: boolean; paidAt: Date | null }[];
@@ -381,6 +384,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
         amount: row.expense.amount,
         isOptional: row.expense.isOptional,
         tagId: row.expense.tagId,
+        dueDate: row.expense.dueDate,
         creatorId: row.expense.creatorId,
         createdAt: row.expense.createdAt,
         splits: []
@@ -465,6 +469,28 @@ async function tagBelongsToHousehold(tagId: string | null, householdId: string) 
   return rows.length > 0;
 }
 
+/**
+ * Validate a posted due date.
+ *
+ * Only meaningful on a high priority expense, so it is dropped when there is no
+ * type. Date-only (YYYY-MM-DD) to match the column; anything else is rejected
+ * rather than coerced, so a malformed value cannot reach the banner.
+ */
+function parseDueDate(raw: FormDataEntryValue | null, tagId: string | null): string | null {
+  if (tagId === null) return null;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (trimmed === '') return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  // Reject impossible dates that match the shape, e.g. 2026-02-31
+  const [y, m, d] = trimmed.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) {
+    return null;
+  }
+  return trimmed;
+}
+
 export const actions: Actions = {
   createExpense: async ({ request, locals, params }) => {
     if (!locals.user) {
@@ -497,6 +523,7 @@ export const actions: Actions = {
     // whoever pays the rent is the one who needs to flag it as rent.
     // tagBelongsToHousehold below rejects a tag from another household.
     const tagId = (formData.get('tagId') as string) || null;
+    const dueDate = parseDueDate(formData.get('dueDate'), tagId);
     const splitWith = formData.getAll('splitWith') as string[];
 
     // Validate input. parseAmount rejects Infinity, NaN and trailing junk,
@@ -511,6 +538,7 @@ export const actions: Actions = {
     if (!(await tagBelongsToHousehold(tagId, householdId))) {
       return fail(400, { error: 'Unknown tag' });
     }
+
     // Note: splitWith can be empty - creator is always included in the split
 
     const currentUserId = locals.user.id;
@@ -583,6 +611,7 @@ export const actions: Actions = {
       description,
       isOptional,
       tagId,
+      dueDate,
       createdAt: new Date(),
       updatedAt: new Date()
     });
@@ -1054,6 +1083,14 @@ export const actions: Actions = {
     // an empty value, which the modal always sends.
     const tagId = formData.has('tagId') ? postedTagId : expense[0].tagId;
 
+    // Keyed off the resolved tagId, so clearing the type also clears the date.
+    // An absent field keeps the stored value, matching how tagId behaves.
+    const dueDate = formData.has('dueDate')
+      ? parseDueDate(formData.get('dueDate'), tagId)
+      : tagId === null
+        ? null
+        : expense[0].dueDate;
+
     if (!(await tagBelongsToHousehold(tagId, householdId))) {
       return fail(400, { error: 'Unknown tag' });
     }
@@ -1118,7 +1155,7 @@ export const actions: Actions = {
     // leave the description saved and the amounts untouched.
     await db
       .update(expenses)
-      .set({ description: description.trim(), isOptional, tagId, updatedAt: new Date() })
+      .set({ description: description.trim(), isOptional, tagId, dueDate, updatedAt: new Date() })
       .where(eq(expenses.id, expenseId));
 
     // Find splits to add (new members not currently in splits)
