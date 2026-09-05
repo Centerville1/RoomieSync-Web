@@ -15,7 +15,9 @@
     payerLabel = 'You',
     initializeAll = true,
     /** False while the set amounts cannot be reconciled with the total. */
-    valid = $bindable(true)
+    valid = $bindable(true),
+    /** Extra markup per member row, e.g. a "Paid" badge when editing. */
+    memberExtra
   }: {
     members: Member[];
     selectedMembers?: string[];
@@ -25,6 +27,7 @@
     payerLabel?: string;
     initializeAll?: boolean;
     valid?: boolean;
+    memberExtra?: import('svelte').Snippet<[{ member: Member; isChecked: boolean }]>;
   } = $props();
 
   let hasInitialized = $state(false);
@@ -114,6 +117,12 @@
       // Dropping someone should not leave their override behind
       clearOverride(id);
     } else {
+      // If every existing share is pinned there is nothing left for the new
+      // person to take, and they would silently join on zero. Unpin the payer
+      // so the expense has somewhere to give from; their row shows the change.
+      if (participants.every((p) => overrides[p.id] !== undefined)) {
+        clearOverride(payerId);
+      }
       selectedMembers = [...selectedMembers, id];
     }
   }
@@ -162,6 +171,9 @@
             aria-label="Split with {member.displayName || member.name}"
           />
           <span class="name">{member.displayName || member.name}</span>
+          {#if memberExtra}
+            {@render memberExtra({ member, isChecked: isIncluded })}
+          {/if}
         </span>
         {#if isIncluded}
           {@render shareCell({ id: member.id })}

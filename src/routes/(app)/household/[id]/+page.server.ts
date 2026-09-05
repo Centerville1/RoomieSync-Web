@@ -1016,6 +1016,14 @@ export const actions: Actions = {
     const isOptional = formData.get('isOptional') === 'on';
     const postedTagId = (formData.get('tagId') as string) || null;
     const splitWith = formData.getAll('splitWith') as string[];
+    // Per-person amounts from the split editor, same shape as createExpense.
+    const postedIds = formData.getAll('splitUserIds') as string[];
+    const postedAmounts = formData.getAll('splitAmounts') as string[];
+    const posted = new Map<string, number>();
+    postedIds.forEach((id, i) => {
+      const value = parseFloat(postedAmounts[i]);
+      if (Number.isFinite(value) && value >= 0) posted.set(id, value);
+    });
 
     if (!expenseId) {
       return fail(400, { error: 'Expense ID is required' });
@@ -1052,22 +1060,68 @@ export const actions: Actions = {
       return fail(400, { error: 'Unknown tag' });
     }
 
-    // Update the expense description, optional status and tag
-    await db
-      .update(expenses)
-      .set({ description: description.trim(), isOptional, tagId, updatedAt: new Date() })
-      .where(eq(expenses.id, expenseId));
-
-    // Handle split changes if splitWith was provided
     // Get current splits
+
     const currentSplits = await db
       .select()
       .from(expenseSplits)
       .where(eq(expenseSplits.expenseId, expenseId));
 
-    // The new split list should include the creator + selected members
-    const newSplitUserIds = [...new Set([currentUserId, ...splitWith])];
+    // Who the expense is divided between. The split editor posts one row per
+    // participant; splitWith is the older shape and still works.
+    const requested = postedIds.length > 0 ? postedIds : splitWith;
+
+    // Only real members can be given a share, so a forged id cannot attach
+    // someone else's account to the expense.
+    const memberRows = await db
+      .select({ userId: householdMembers.userId })
+      .from(householdMembers)
+      .where(eq(householdMembers.householdId, householdId));
+    const memberIds = new Set(memberRows.map((m) => m.userId));
+
+    const newSplitUserIds = [...new Set([currentUserId, ...requested])].filter((id) =>
+      memberIds.has(id)
+    );
     const currentSplitUserIds = currentSplits.map((s) => s.userId);
+
+    // Work out the new shares before touching anything. calculateSplits honours
+    // overrides as given, so a client that pins every share could leave part of
+    // the expense unaccounted for; failing after the membership writes would
+    // leave the expense half edited.
+    //
+    // Posted amounts are honoured, so an uneven expense stays uneven through an
+    // edit. An amount only counts as an override when it differs from the even
+    // share, so an untouched form still divides evenly after any rounding.
+    const evenShare = expense[0].amount / newSplitUserIds.length;
+    const rebalanced = calculateSplits(
+      expense[0].amount,
+      newSplitUserIds.map((userId) => {
+        const p = posted.get(userId);
+        const isOverride = p !== undefined && Math.abs(p - evenShare) > 0.005;
+        return { userId, override: isOverride ? p : undefined };
+      }),
+      expense[0].creatorId
+    );
+
+    if (
+      !splitsMatchTotal(
+        expense[0].amount,
+        rebalanced.map((sp) => sp.amount)
+      )
+    ) {
+      return fail(400, {
+        error: 'The split amounts must add up to the expense total'
+      });
+    }
+
+    const amountByUser = new Map(rebalanced.map((r) => [r.userId, r.amount]));
+
+    // Only now that the split is known to reconcile: a rejected split used to
+    // leave the description saved and the amounts untouched.
+    await db
+      .update(expenses)
+      .set({ description: description.trim(), isOptional, tagId, updatedAt: new Date() })
+      .where(eq(expenses.id, expenseId));
 
     // Find splits to add (new members not currently in splits)
     const splitsToAdd = newSplitUserIds.filter((id) => !currentSplitUserIds.includes(id));
@@ -1084,7 +1138,7 @@ export const actions: Actions = {
         id: generateId(),
         expenseId,
         userId,
-        amount: 0,
+        amount: amountByUser.get(userId) ?? 0,
         hasPaid: false,
         paidAt: null
       }));
@@ -1097,29 +1151,19 @@ export const actions: Actions = {
       await db.delete(expenseSplits).where(inArray(expenseSplits.id, idsToRemove));
     }
 
-    // Rebalance every share over the final membership. Changing who is included
-    // changes what everyone owes, and without this the rows would no longer sum
-    // to the expense: added rows would sit at 0 while the others kept their old
-    // amounts. Existing uneven shares are not preserved, because there is no way
-    // to know how the person editing wants the new total divided.
+    // Write the validated shares over the final membership. Everyone's amount
+    // is set, not just the changed ones: adding or removing a person changes
+    // what the others owe.
     const finalSplits = await db
       .select({ id: expenseSplits.id, userId: expenseSplits.userId })
       .from(expenseSplits)
       .where(eq(expenseSplits.expenseId, expenseId));
 
-    if (finalSplits.length > 0) {
-      const rebalanced = calculateSplits(
-        expense[0].amount,
-        finalSplits.map((sp) => ({ userId: sp.userId })),
-        expense[0].creatorId
-      );
-      const byUser = new Map(rebalanced.map((r) => [r.userId, r.amount]));
-      for (const sp of finalSplits) {
-        await db
-          .update(expenseSplits)
-          .set({ amount: byUser.get(sp.userId) ?? 0 })
-          .where(eq(expenseSplits.id, sp.id));
-      }
+    for (const sp of finalSplits) {
+      await db
+        .update(expenseSplits)
+        .set({ amount: amountByUser.get(sp.userId) ?? 0 })
+        .where(eq(expenseSplits.id, sp.id));
     }
 
     return { success: true };
