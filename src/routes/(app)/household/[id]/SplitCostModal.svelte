@@ -63,6 +63,7 @@
       <div class="form-group">
         <AmountInput
           bind:value={amount}
+          bind:invalid={amountInvalid}
           name="amount"
           id="expense-amount"
           label="Amount"

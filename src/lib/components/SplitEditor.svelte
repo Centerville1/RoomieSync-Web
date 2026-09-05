@@ -112,17 +112,21 @@
   }
 
   function toggleMember(id: string) {
+    // Adding or removing someone changes what the expense has to divide, so
+    // when every share is pinned there is nothing that can absorb the
+    // difference: the amounts would no longer reconcile and submit would be
+    // blocked with no obvious way out. Unpinning the payer gives the change
+    // somewhere to land, and their row shows it happening.
+    const allPinned = participants.every((p) => overrides[p.id] !== undefined);
+
     if (selectedMembers.includes(id)) {
       selectedMembers = selectedMembers.filter((m) => m !== id);
       // Dropping someone should not leave their override behind
       clearOverride(id);
+      // Their share has to go somewhere, and every other share is spoken for
+      if (allPinned && id !== payerId) clearOverride(payerId);
     } else {
-      // If every existing share is pinned there is nothing left for the new
-      // person to take, and they would silently join on zero. Unpin the payer
-      // so the expense has somewhere to give from; their row shows the change.
-      if (participants.every((p) => overrides[p.id] !== undefined)) {
-        clearOverride(payerId);
-      }
+      if (allPinned) clearOverride(payerId);
       selectedMembers = [...selectedMembers, id];
     }
   }
@@ -132,8 +136,15 @@
   function toggleAll() {
     if (allSelected) {
       for (const m of members) clearOverride(m.id);
+      // The payer is now alone with the whole expense, so a pinned share of
+      // their own would leave the rest unaccounted for.
+      clearOverride(payerId);
       selectedMembers = [];
     } else {
+      // Everyone joining at once needs the same room to divide into
+      if (participants.every((p) => overrides[p.id] !== undefined)) {
+        clearOverride(payerId);
+      }
       selectedMembers = members.map((m) => m.id);
     }
   }

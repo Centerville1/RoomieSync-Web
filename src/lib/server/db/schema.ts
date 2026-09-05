@@ -91,13 +91,13 @@ export const expenses = sqliteTable('expenses', {
   amount: real('amount').notNull(),
   description: text('description').notNull(),
   isOptional: integer('is_optional', { mode: 'boolean' }).notNull().default(false),
-  // Marks this expense as important and records what kind: rent, utilities,
-  // whatever the household defines. Tagged expenses get their own colour in the
-  // grid and raise a banner while the user's own split is unpaid, because these
-  // are the ones that cannot be left to slide. Nullable, since most expenses
-  // are ordinary, and set null on tag deletion so removing a tag never deletes
-  // expenses.
-  tagId: text('tag_id'),
+  // Marks this expense as high priority and records what kind: rent, utilities,
+  // whatever the household defines. These get their own colour in the grid and
+  // raise a banner while the user's own split is unpaid, because they are the
+  // ones that cannot be left to slide. Nullable, since most expenses are
+  // ordinary. ON DELETE SET NULL is a real constraint, so removing a type never
+  // deletes expenses no matter which route deletes it.
+  tagId: text('tag_id').references(() => expenseTags.id, { onDelete: 'set null' }),
   // When a high priority expense is due, shown in its banner. Display only for
   // now: nothing sorts, sends or escalates on it. Stored as a date-only string
   // (YYYY-MM-DD) rather than a timestamp, because "rent is due on the 1st" has

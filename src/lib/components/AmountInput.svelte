@@ -47,10 +47,16 @@
 
   const evaluated = $derived(evaluateExpression(raw));
   const isExpression = $derived(raw.trim() !== '' && /[+\-*/()]/.test(raw.trim()));
+  // Text that cannot be resolved. Empty is not "wrong" to look at, so it shows
+  // no error, but it is still not a usable amount: see `unusable`.
   const isInvalid = $derived(raw.trim() !== '' && evaluated === null);
+  // What callers gate submit on. An empty field counts, because `value` holds
+  // the last good number and would otherwise keep the form enabled with a
+  // stale amount the user has already deleted.
+  const unusable = $derived(evaluated === null);
 
   $effect(() => {
-    invalid = isInvalid;
+    invalid = unusable;
   });
 
   function commit() {
@@ -60,6 +66,11 @@
       lastExternal = evaluated;
       // Collapse the workings into the result once the field loses focus
       raw = formatAmount(evaluated);
+    } else if (raw.trim() === '') {
+      // Leave an emptied field empty rather than refilling it with the old
+      // number; the amount really is gone.
+      value = 0;
+      lastExternal = 0;
     }
   }
 
@@ -70,10 +81,12 @@
 
   function onInput() {
     touched = true;
-    if (evaluated !== null) {
-      value = evaluated;
-      lastExternal = evaluated;
-    }
+    // Track the field even when it cannot be resolved. Leaving the old number
+    // in `value` let a cleared field keep previewing shares for an amount that
+    // is no longer there, and kept submit enabled.
+    const next = evaluated ?? 0;
+    value = next;
+    lastExternal = next;
   }
 </script>
 

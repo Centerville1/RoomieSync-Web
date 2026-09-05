@@ -329,7 +329,10 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
         amount: row.expense.amount,
         isOptional: row.expense.isOptional,
         tagId: row.expense.tagId,
-        dueDate: row.expense.dueDate,
+        // A due date only means something alongside a type. The FK sets tag_id
+        // to null if a type is deleted outside the app, which would otherwise
+        // leave the date stranded on an ordinary expense.
+        dueDate: row.expense.tagId ? row.expense.dueDate : null,
         creatorId: row.expense.creatorId,
         createdAt: row.expense.createdAt,
         splits: []
@@ -384,7 +387,10 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
         amount: row.expense.amount,
         isOptional: row.expense.isOptional,
         tagId: row.expense.tagId,
-        dueDate: row.expense.dueDate,
+        // A due date only means something alongside a type. The FK sets tag_id
+        // to null if a type is deleted outside the app, which would otherwise
+        // leave the date stranded on an ordinary expense.
+        dueDate: row.expense.tagId ? row.expense.dueDate : null,
         creatorId: row.expense.creatorId,
         createdAt: row.expense.createdAt,
         splits: []
@@ -601,31 +607,35 @@ export const actions: Actions = {
 
     const amountByUser = new Map(splitAmounts.map((sp) => [sp.userId, sp.amount]));
 
-    // Create expense
+    // Create expense. One transaction: an expense with no split rows owes
+    // nothing to anyone and shows up for no one, but still counts toward the
+    // household total, so it must never exist on its own.
     const expenseId = generateId();
-    await db.insert(expenses).values({
-      id: expenseId,
-      householdId,
-      creatorId: currentUserId,
-      amount,
-      description,
-      isOptional,
-      tagId,
-      dueDate,
-      createdAt: new Date(),
-      updatedAt: new Date()
+    await db.transaction(async (tx) => {
+      await tx.insert(expenses).values({
+        id: expenseId,
+        householdId,
+        creatorId: currentUserId,
+        amount,
+        description,
+        isOptional,
+        tagId,
+        dueDate,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      await tx.insert(expenseSplits).values(
+        allSplitUsers.map((userId) => ({
+          id: generateId(),
+          expenseId,
+          userId,
+          amount: amountByUser.get(userId) ?? 0,
+          hasPaid: userId === currentUserId, // Creator has already paid
+          paidAt: userId === currentUserId ? new Date() : null
+        }))
+      );
     });
-
-    const splits = allSplitUsers.map((userId) => ({
-      id: generateId(),
-      expenseId,
-      userId,
-      amount: amountByUser.get(userId) ?? 0,
-      hasPaid: userId === currentUserId, // Creator has already paid
-      paidAt: userId === currentUserId ? new Date() : null
-    }));
-
-    await db.insert(expenseSplits).values(splits);
 
     return { success: true };
   },
@@ -1151,13 +1161,6 @@ export const actions: Actions = {
 
     const amountByUser = new Map(rebalanced.map((r) => [r.userId, r.amount]));
 
-    // Only now that the split is known to reconcile: a rejected split used to
-    // leave the description saved and the amounts untouched.
-    await db
-      .update(expenses)
-      .set({ description: description.trim(), isOptional, tagId, dueDate, updatedAt: new Date() })
-      .where(eq(expenses.id, expenseId));
-
     // Find splits to add (new members not currently in splits)
     const splitsToAdd = newSplitUserIds.filter((id) => !currentSplitUserIds.includes(id));
 
@@ -1165,41 +1168,51 @@ export const actions: Actions = {
     const splitsToRemove = currentSplits.filter(
       (s) => !newSplitUserIds.includes(s.userId) && s.userId !== currentUserId
     );
+    const removedIds = new Set(splitsToRemove.map((s) => s.id));
 
-    // Add new splits. Amount is filled in by the rebalance below, but set it
-    // here too so a row never exists with a null amount even momentarily.
-    if (splitsToAdd.length > 0) {
-      const newSplits = splitsToAdd.map((userId) => ({
-        id: generateId(),
-        expenseId,
-        userId,
-        amount: amountByUser.get(userId) ?? 0,
-        hasPaid: false,
-        paidAt: null
-      }));
-      await db.insert(expenseSplits).values(newSplits);
-    }
+    // The rows that survive this edit, so the amounts can be written without
+    // re-reading what was just changed.
+    const survivingSplits = currentSplits.filter((s) => !removedIds.has(s.id));
 
-    // Remove old splits
-    if (splitsToRemove.length > 0) {
-      const idsToRemove = splitsToRemove.map((s) => s.id);
-      await db.delete(expenseSplits).where(inArray(expenseSplits.id, idsToRemove));
-    }
+    // One transaction for the whole edit. Every write below depends on the
+    // others: an expense whose membership changed but whose amounts did not no
+    // longer sums to its total, and every balance is read straight from these
+    // stored amounts, so a partial write is silently wrong money rather than a
+    // visible error.
+    await db.transaction(async (tx) => {
+      // Only now that the split is known to reconcile: a rejected split used to
+      // leave the description saved and the amounts untouched.
+      await tx
+        .update(expenses)
+        .set({ description: description.trim(), isOptional, tagId, dueDate, updatedAt: new Date() })
+        .where(eq(expenses.id, expenseId));
 
-    // Write the validated shares over the final membership. Everyone's amount
-    // is set, not just the changed ones: adding or removing a person changes
-    // what the others owe.
-    const finalSplits = await db
-      .select({ id: expenseSplits.id, userId: expenseSplits.userId })
-      .from(expenseSplits)
-      .where(eq(expenseSplits.expenseId, expenseId));
+      if (splitsToAdd.length > 0) {
+        await tx.insert(expenseSplits).values(
+          splitsToAdd.map((userId) => ({
+            id: generateId(),
+            expenseId,
+            userId,
+            amount: amountByUser.get(userId) ?? 0,
+            hasPaid: false,
+            paidAt: null
+          }))
+        );
+      }
 
-    for (const sp of finalSplits) {
-      await db
-        .update(expenseSplits)
-        .set({ amount: amountByUser.get(sp.userId) ?? 0 })
-        .where(eq(expenseSplits.id, sp.id));
-    }
+      if (splitsToRemove.length > 0) {
+        await tx.delete(expenseSplits).where(inArray(expenseSplits.id, [...removedIds]));
+      }
+
+      // Rewrite every surviving share, not just the changed ones: adding or
+      // removing a person changes what everyone else owes.
+      for (const sp of survivingSplits) {
+        await tx
+          .update(expenseSplits)
+          .set({ amount: amountByUser.get(sp.userId) ?? 0 })
+          .where(eq(expenseSplits.id, sp.id));
+      }
+    });
 
     return { success: true };
   },
@@ -1252,11 +1265,13 @@ export const actions: Actions = {
       return fail(403, { error: 'You can only delete expenses you created' });
     }
 
-    // Delete expense splits first (foreign key constraint)
-    await db.delete(expenseSplits).where(eq(expenseSplits.expenseId, expenseId));
-
-    // Delete the expense
-    await db.delete(expenses).where(eq(expenses.id, expenseId));
+    // One transaction: the splits going without the expense would leave a row
+    // that counts toward the household total but owes nothing to anyone.
+    await db.transaction(async (tx) => {
+      // Splits first, for the foreign key constraint
+      await tx.delete(expenseSplits).where(eq(expenseSplits.expenseId, expenseId));
+      await tx.delete(expenses).where(eq(expenses.id, expenseId));
+    });
 
     return { success: true };
   },
@@ -1360,17 +1375,6 @@ export const actions: Actions = {
     const expenseId = generateId();
     const now = new Date();
 
-    await db.insert(expenses).values({
-      id: expenseId,
-      householdId,
-      creatorId,
-      amount,
-      description: description.trim(),
-      isOptional,
-      createdAt: expenseDate,
-      updatedAt: now
-    });
-
     // Create expense splits for selected members + creator
     const allSplitUsers = [...new Set([creatorId, ...splitWith])];
 
@@ -1407,16 +1411,31 @@ export const actions: Actions = {
     );
     const importedByUser = new Map(importedSplits.map((sp) => [sp.userId, sp.amount]));
 
-    const splits = allSplitUsers.map((userId) => ({
-      id: generateId(),
-      expenseId,
-      userId,
-      amount: importedByUser.get(userId) ?? 0,
-      hasPaid: userId === creatorId || paidMembers.includes(userId),
-      paidAt: getPaidAtDate(userId)
-    }));
+    // One transaction, as in createExpense: an expense with no split rows
+    // counts toward the household total while owing nothing to anyone.
+    await db.transaction(async (tx) => {
+      await tx.insert(expenses).values({
+        id: expenseId,
+        householdId,
+        creatorId,
+        amount,
+        description: description.trim(),
+        isOptional,
+        createdAt: expenseDate,
+        updatedAt: now
+      });
 
-    await db.insert(expenseSplits).values(splits);
+      await tx.insert(expenseSplits).values(
+        allSplitUsers.map((userId) => ({
+          id: generateId(),
+          expenseId,
+          userId,
+          amount: importedByUser.get(userId) ?? 0,
+          hasPaid: userId === creatorId || paidMembers.includes(userId),
+          paidAt: getPaidAtDate(userId)
+        }))
+      );
+    });
 
     return { success: true };
   },
@@ -1819,23 +1838,32 @@ export const actions: Actions = {
       return fail(400, { error: 'Tag is required' });
     }
 
-    // Untag the expenses first, then remove the tag, in one transaction so an
-    // expense can never point at a tag that no longer exists.
-    const deleted = await db.transaction(async (tx) => {
-      await tx
-        .update(expenses)
-        .set({ tagId: null, updatedAt: new Date() })
-        .where(and(eq(expenses.householdId, householdId), eq(expenses.tagId, tagId)));
+    // Untag the expenses first, then remove the type, in one transaction so an
+    // expense can never point at a type that no longer exists. The due date
+    // goes with it: a date is only meaningful on a high priority expense.
+    //
+    // A missing type throws so the untag rolls back. Returning the 404 after
+    // the transaction committed would report "not found" having already
+    // written, which is exactly the protection the transaction is here for.
+    const NOT_FOUND = 'tag-not-found';
+    try {
+      await db.transaction(async (tx) => {
+        await tx
+          .update(expenses)
+          .set({ tagId: null, dueDate: null, updatedAt: new Date() })
+          .where(and(eq(expenses.householdId, householdId), eq(expenses.tagId, tagId)));
 
-      const result = await tx
-        .delete(expenseTags)
-        .where(and(eq(expenseTags.id, tagId), eq(expenseTags.householdId, householdId)));
+        const result = await tx
+          .delete(expenseTags)
+          .where(and(eq(expenseTags.id, tagId), eq(expenseTags.householdId, householdId)));
 
-      return result.rowsAffected;
-    });
-
-    if (deleted === 0) {
-      return fail(404, { error: 'Tag not found' });
+        if (result.rowsAffected === 0) throw new Error(NOT_FOUND);
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message === NOT_FOUND) {
+        return fail(404, { error: 'Type not found' });
+      }
+      throw err;
     }
 
     return { success: true };
