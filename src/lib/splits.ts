@@ -155,6 +155,36 @@ export function calculateSplits(
 }
 
 /**
+ * Whether these stored shares are anything other than a plain even split.
+ *
+ * Not a simple "do they all equal amount/count": an even split of $10 three
+ * ways is stored as 3.34/3.33/3.33, because the remainder penny has to go
+ * somewhere. Comparing against the unrounded 3.3333 average would call that
+ * uneven. So this compares against what calculateSplits actually produces for
+ * an even split, which is the only definition that round-trips.
+ */
+export function isUnevenSplit(
+  total: number,
+  splits: { userId: string; amount?: number | null }[],
+  creatorId: string
+): boolean {
+  if (splits.length === 0) return false;
+
+  // A row with no stored amount was written before per-split amounts existed
+  // and is taking an even share by fallback. Nothing about it was set by hand,
+  // so an expense containing one is not an uneven split.
+  if (splits.some((s) => s.amount === null || s.amount === undefined)) return false;
+
+  const even = calculateSplits(
+    total,
+    splits.map((s) => ({ userId: s.userId })),
+    creatorId
+  );
+  const evenByUser = new Map(even.map((e) => [e.userId, toCents(e.amount)]));
+  return splits.some((s) => toCents(s.amount as number) !== evenByUser.get(s.userId));
+}
+
+/**
  * Validate a set of split amounts against the expense total.
  *
  * Compared in cents so float noise never makes a correct split look wrong.

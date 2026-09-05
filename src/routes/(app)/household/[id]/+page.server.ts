@@ -493,12 +493,10 @@ export const actions: Actions = {
     const amount = parseAmount(formData.get('amount'));
     const description = formData.get('description') as string;
     const isOptional = formData.get('isOptional') === 'on';
-    // Tags are admin-managed, so only an admin may apply one. A tag posted by
-    // anyone else is dropped rather than rejected: the field is not shown to
-    // them, so the only way to get here is a stale form, and failing the whole
-    // expense over it would lose their work.
-    const isAdmin = membership[0].role === 'admin';
-    const tagId = isAdmin ? (formData.get('tagId') as string) || null : null;
+    // Any member may apply a tag. Only defining the vocabulary is admin-only:
+    // whoever pays the rent is the one who needs to flag it as rent.
+    // tagBelongsToHousehold below rejects a tag from another household.
+    const tagId = (formData.get('tagId') as string) || null;
     const splitWith = formData.getAll('splitWith') as string[];
 
     // Validate input. parseAmount rejects Infinity, NaN and trailing junk,
@@ -1050,11 +1048,11 @@ export const actions: Actions = {
       return fail(403, { error: 'You can only edit expenses you created' });
     }
 
-    // Only an admin may change the tag. For anyone else the expense keeps the
-    // tag it has: the field is not rendered for them, and a missing tagId would
-    // otherwise read as "clear it", silently untagging the rent every time the
-    // creator fixed a typo.
-    const tagId = membership[0].role === 'admin' ? postedTagId : expense[0].tagId;
+    // Any member may change the tag on an expense they created. A form that
+    // posts no tagId at all keeps the existing tag rather than clearing it, so
+    // an older form cannot silently untag the rent; clearing is done by posting
+    // an empty value, which the modal always sends.
+    const tagId = formData.has('tagId') ? postedTagId : expense[0].tagId;
 
     if (!(await tagBelongsToHousehold(tagId, householdId))) {
       return fail(400, { error: 'Unknown tag' });

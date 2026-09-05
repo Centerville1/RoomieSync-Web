@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { calculateSplits, shareFor } from '$lib/splits';
+  import { calculateSplits, isUnevenSplit, shareFor } from '$lib/splits';
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
@@ -84,13 +84,14 @@
       // edit cannot quietly flatten a 600/700 rent back to an even split. An
       // evenly split expense is left unpinned: pinning it would leave nothing
       // to absorb a newly added member, landing them on zero.
-      const evenShare = expense.amount / expense.splits.length;
-      const isUneven = expense.splits.some(
-        (sp) => Math.abs(shareFor(expense, sp.userId) - evenShare) > 0.005
+      const uneven = isUnevenSplit(
+        expense.amount,
+        expense.splits.map((sp) => ({ userId: sp.userId, amount: shareFor(expense, sp.userId) })),
+        expense.creatorId
       );
 
       const seeded: Record<string, number> = {};
-      if (isUneven) {
+      if (uneven) {
         for (const sp of expense.splits) {
           seeded[sp.userId] = shareFor(expense, sp.userId);
         }

@@ -11,6 +11,7 @@ export {
   fromCents,
   calculateSplits,
   splitsMatchTotal,
+  isUnevenSplit,
   shareFor,
   isUnpaidBy,
   unpaidTotalFor,

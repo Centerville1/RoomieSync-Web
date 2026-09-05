@@ -54,7 +54,7 @@
     createdAt: Date;
     splits: { userId: string; amount: number | null; hasPaid: boolean; paidAt: Date | null }[];
   };
-  // Tags are admin-managed: members see them on expenses but cannot define them
+  // Admins define the tag vocabulary; every member can apply an existing tag
   const isAdmin = $derived(data.userRole === 'admin');
 
   let selectedExpenseForEdit = $state<Expense | null>(null);
@@ -435,7 +435,7 @@
   bind:open={showSplitCostModal}
   members={otherMembers}
   currentUserId={data.currentUserId}
-  tags={isAdmin ? data.tags : []}
+  tags={data.tags}
   {form}
 />
 
@@ -455,7 +455,7 @@
   bind:open={showEditExpenseModal}
   expense={selectedExpenseForEdit}
   members={data.members}
-  tags={isAdmin ? data.tags : []}
+  tags={data.tags}
 />
 
 <!-- Delete Expense Modal -->
