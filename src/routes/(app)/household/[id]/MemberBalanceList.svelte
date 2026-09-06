@@ -93,7 +93,7 @@
            action available to you, and it is also what unblocks reminding. -->
       {@const canRemind = !canPay && !!balance && balance.owesYou > 0 && !!onNudge}
       <li>
-        {#snippet content()}
+        {#snippet content(showBell = false)}
           <span class="who">{getMemberDisplayName(member)}</span>
 
           <span class="figures">
@@ -115,6 +115,21 @@
               {/if}
             {/if}
           </span>
+
+          <!-- Shown on a chip that is entirely the remind target, so the action
+               is visible. The pay chip passes false: it has its own bell button
+               beside it, and two would read as two reminders. -->
+          {#if showBell}
+            <span class="bell" class:blocked={!nudgeStatus.canNudge} aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                {#if !nudgeStatus.canNudge}
+                  <line x1="3" y1="3" x2="21" y2="21" />
+                {/if}
+              </svg>
+            </span>
+          {/if}
         {/snippet}
 
         <!-- The whole chip is the button when there is someone to remind, so
@@ -189,7 +204,7 @@
               }
             }}
           >
-            {@render content()}
+            {@render content(true)}
           </button>
         {:else}
           <div class="chip" class:settled-chip={settled}>
