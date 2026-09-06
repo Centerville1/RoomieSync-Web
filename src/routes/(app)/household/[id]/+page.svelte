@@ -235,6 +235,29 @@
     showPayExpensesModal = true;
   }
 
+  /**
+   * Everything I still owe one person, across every page.
+   *
+   * From unpaidExpenses rather than the loaded rows, for the same reason
+   * select-all is: their older expenses are just as payable.
+   */
+  function payPerson(memberId: string) {
+    const ids = data.unpaidExpenses
+      .filter((e) => {
+        if (e.creatorId !== memberId) return false;
+        // Optional expenses are excluded from the youOwe figure on the chip, so
+        // selecting them here would open the modal on a larger total than the
+        // chip promised. They stay individually selectable in the list.
+        if (e.isOptional) return false;
+        const mine = e.splits.find((sp) => sp.userId === data.currentUserId);
+        return mine !== undefined && !mine.hasPaid;
+      })
+      .map((e) => e.id);
+    if (ids.length === 0) return;
+    selectedExpenseIds = new Set(ids);
+    showPayExpensesModal = true;
+  }
+
   // The pay modal resolves each selected id against this array, so it must hold
   // the unpaid expenses even when they are not on the loaded page. Loaded rows
   // win, since they carry the creator object the grid renders.
@@ -425,6 +448,7 @@
         memberBalances={data.memberBalances}
         nudgesSent={data.nudgesSent}
         onNudge={handleNudge}
+        onPayPerson={payPerson}
       />
 
       <ExpenseList

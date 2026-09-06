@@ -17,13 +17,16 @@
     currentUserId,
     memberBalances = {},
     nudgesSent = [],
-    onNudge
+    onNudge,
+    onPayPerson
   }: {
     members?: Member[];
     currentUserId: string;
     memberBalances?: Record<string, MemberBalance>;
     nudgesSent?: NudgeSent[];
     onNudge?: (memberId: string, memberName: string, amountOwed: number) => void;
+    /** Select everything still owed to this person and open the pay flow. */
+    onPayPerson?: (memberId: string) => void;
   } = $props();
 
   // Everyone but me: my own balance with myself is always zero
@@ -85,7 +88,10 @@
           balance.youOwe === 0 &&
           balance.owesYouOptional === 0 &&
           balance.youOweOptional === 0)}
-      {@const canRemind = balance && balance.owesYou > 0 && !!onNudge}
+      {@const canPay = !!balance && balance.youOwe > 0 && !!onPayPerson}
+      <!-- Paying takes precedence: when you owe them, settling up is the
+           action available to you, and it is also what unblocks reminding. -->
+      {@const canRemind = !canPay && !!balance && balance.owesYou > 0 && !!onNudge}
       <li>
         {#snippet content()}
           <span class="who">{getMemberDisplayName(member)}</span>
@@ -94,11 +100,13 @@
             {#if settled}
               <span class="settled">Settled up</span>
             {:else}
-              {#if balance.owesYou > 0}
-                <span class="owes-you">Owes you {formatCurrency(balance.owesYou)}</span>
-              {/if}
+              <!-- What you owe leads: paying it back is the action available to
+                   you, and reminding is secondary to that. -->
               {#if balance.youOwe > 0}
                 <span class="you-owe">You owe {formatCurrency(balance.youOwe)}</span>
+              {/if}
+              {#if balance.owesYou > 0}
+                <span class="owes-you">Owes you {formatCurrency(balance.owesYou)}</span>
               {/if}
               {#if balance.owesYouOptional > 0 || balance.youOweOptional > 0}
                 <span class="opt">
@@ -107,26 +115,58 @@
               {/if}
             {/if}
           </span>
-
-          {#if canRemind}
-            <span class="bell" class:blocked={!nudgeStatus.canNudge} aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                {#if !nudgeStatus.canNudge}
-                  <!-- Crossed out: the reminder is unavailable, and saying so
-                       on the icon beats leaving the whole chip looking dead. -->
-                  <line x1="3" y1="3" x2="21" y2="21" />
-                {/if}
-              </svg>
-            </span>
-          {/if}
         {/snippet}
 
         <!-- The whole chip is the button when there is someone to remind, so
              there is no small target to hit. With nobody to remind it is inert
              markup rather than a disabled control. -->
-        {#if canRemind}
+        {#if canPay}
+          <!-- Two actions on one chip: the chip pays, and when they also owe
+               you, a separate bell says why reminding is unavailable. Siblings
+               in a wrapper, never nested, so a tap can only hit one. -->
+          <span class="chip-pair">
+            <button
+              type="button"
+              class="chip actionable pairs"
+              title="Pay {getMemberDisplayName(member)} {formatCurrency(balance.youOwe)}"
+              aria-label="Pay {getMemberDisplayName(member)} {formatCurrency(balance.youOwe)}"
+              onclick={() => onPayPerson?.(member.id)}
+            >
+              {@render content()}
+            </button>
+            {#if balance.owesYou > 0 && onNudge}
+              <button
+                type="button"
+                class="bell-btn"
+                title={nudgeStatus.reason ?? 'Send a reminder'}
+                aria-label={nudgeStatus.canNudge
+                  ? `Remind ${getMemberDisplayName(member)}`
+                  : `Cannot remind ${getMemberDisplayName(member)}: ${nudgeStatus.reason}`}
+                onclick={() => {
+                  if (nudgeStatus.canNudge) {
+                    onNudge?.(member.id, getMemberDisplayName(member), balance.owesYou);
+                  } else {
+                    blockedFor = {
+                      name: getMemberDisplayName(member),
+                      reason: nudgeStatus.reason ?? ''
+                    };
+                    blockedOpen = true;
+                  }
+                }}
+              >
+                <span class="bell" class:blocked={!nudgeStatus.canNudge}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                    {#if !nudgeStatus.canNudge}
+                      <line x1="3" y1="3" x2="21" y2="21" />
+                    {/if}
+                  </svg>
+                </span>
+              </button>
+            {/if}
+          </span>
+        {:else if canRemind}
           <!-- Never disabled: a chip carrying real balances has to stay
                readable. A blocked reminder explains itself on click instead. -->
           <button
@@ -217,6 +257,40 @@
     cursor: pointer;
   }
 
+  /* The pay chip and its bell read as one control, so they share a border */
+  .chip-pair {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+
+  .chip.pairs {
+    border: none;
+    border-radius: 0;
+  }
+
+  .bell-btn {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    padding: 0;
+    border: none;
+    border-left: 1px solid var(--color-border);
+    background: none;
+    cursor: pointer;
+  }
+
+  .bell-btn:hover {
+    background-color: var(--color-bg-secondary);
+  }
+
+  .bell-btn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+  }
+
   .chip.actionable:hover {
     border-color: var(--color-primary);
     background-color: var(--color-bg-secondary);
@@ -292,7 +366,7 @@
     color: var(--color-text-tertiary);
   }
 
-  .chip.actionable:hover .bell {
+  .bell-btn:hover .bell {
     background-color: var(--color-primary);
     color: white;
   }
