@@ -76,6 +76,11 @@
   let sentinel = $state<HTMLDivElement | null>(null);
   let isLoadingMore = $state(false);
 
+  // Measured, not assumed: the head row's min-height is a floor, and the
+  // select-all label can push it taller on a narrow screen. The import row
+  // sticks directly beneath it, so a wrong number here would overlap.
+  let headRowHeight = $state(0);
+
   $effect(() => {
     if (!sentinel || !onLoadMore || !hasMore) return;
     const observer = new IntersectionObserver(
@@ -96,7 +101,7 @@
 </script>
 
 <div class="expense-list">
-  <div class="head-row">
+  <div class="head-row" bind:clientHeight={headRowHeight}>
     <span class="col-check"></span>
     <div class="head-cols">
       <span class="head-label">Mine</span>
@@ -120,9 +125,14 @@
   </div>
 
   <!-- Above the first row, not below the last: at the foot of a list this long
-       nobody would ever scroll to it. -->
+       nobody would ever scroll to it. Sticks directly under the head row. -->
   {#if isAdmin && onImportExpense}
-    <button type="button" class="import-row" onclick={() => onImportExpense()}>
+    <button
+      type="button"
+      class="import-row"
+      style="--head-row-height: {headRowHeight}px"
+      onclick={() => onImportExpense()}
+    >
       <span class="import-plus" aria-hidden="true">+</span>
       Import an expense
     </button>
@@ -232,6 +242,15 @@
   }
 
   .import-row {
+    /* Stacks under the sticky head row, so both stay reachable while the list
+       scrolls. z-index is one below the head row's, so the head row wins where
+       they meet. */
+    position: sticky;
+    top: calc(
+      var(--navbar-height, 5.5rem) + var(--household-header-height, 0px) +
+        var(--head-row-height, 40px)
+    );
+    z-index: 29;
     display: flex;
     align-items: center;
     justify-content: center;
