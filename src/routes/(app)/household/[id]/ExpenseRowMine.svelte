@@ -97,12 +97,13 @@
   class:is-optional={expense.isOptional}
   style={tag ? `--tag-color: ${tag.color ?? '#6b7fff'}` : ''}
 >
-  <!-- Empty gutter matching the checkbox column on other rows, so the two
-       content columns line up across both row types. -->
-  <span class="col-check"></span>
+  <!-- Two sibling buttons, never nested: the left cell edits, the right cell
+       expands. A tap can only ever land in one of them. The edit half also
+       covers the checkbox gutter, which is empty on my own rows, so no part
+       of the row is dead space. -->
   <button
     type="button"
-    class="row-body"
+    class="row-body edit-part"
     aria-label="Edit {expense.description}, {formatCurrency(expense.amount)}"
     onclick={() => onEdit?.(expense)}
   >
@@ -124,50 +125,61 @@
       </span>
       <span class="amount you-paid">{formatCurrency(expense.amount)}</span>
     </span>
-
-    <span class="col-others">
-      {#if others.length === 0}
-        <span class="quiet">Just you on this one</span>
-      {:else if outstanding === 0}
-        <span class="settled">Everyone has paid you back</span>
-      {:else if uneven}
-        <span class="owed-line">
-          {unpaidCount}
-          {unpaidCount === 1 ? 'person owes' : 'people owe'} you a total of
-        </span>
-        <span class="owed-amount">{formatCurrency(outstanding)}</span>
-      {:else}
-        <span class="owed-line">
-          {unpaidCount === others.length
-            ? 'Each person owes you'
-            : `${unpaidCount} of ${others.length} still owe you`}
-        </span>
-        <span class="owed-amount"
-          >{formatCurrency(eachOwes)}{#if unpaidCount !== others.length}<span class="owed-each">
-              each</span
-            >{/if}</span
-        >
-      {/if}
-      {#if !inMySplit}
-        <span class="quiet">You owe nothing on this</span>
-      {/if}
-    </span>
   </button>
 
-  <!-- Positioned into the Everyone Else column, where the text is short enough
-       to leave room. A sibling of the row body, never nested inside it, so a
-       tap can only ever hit one of them. -->
+  {#snippet owedSummary()}
+    {#if others.length === 0}
+      <span class="quiet">Just you on this one</span>
+    {:else if outstanding === 0}
+      <span class="settled">
+        <span class="badge paid-badge" aria-hidden="true">✓</span>
+        Everyone paid you back
+      </span>
+    {:else if uneven}
+      <span class="owed-line">
+        {unpaidCount}
+        {unpaidCount === 1 ? 'person owes' : 'people owe'} you a total of
+      </span>
+      <span class="owed-amount">{formatCurrency(outstanding)}</span>
+    {:else}
+      <span class="owed-line">
+        {unpaidCount === others.length
+          ? 'Each person owes you'
+          : `${unpaidCount} of ${others.length} still owe you`}
+      </span>
+      <span class="owed-amount"
+        >{formatCurrency(eachOwes)}{#if unpaidCount !== others.length}<span class="owed-each">
+            each</span
+          >{/if}</span
+      >
+    {/if}
+    {#if !inMySplit}
+      <span class="quiet">You owe nothing on this</span>
+    {/if}
+  {/snippet}
+
   {#if others.length > 0}
+    <!-- The whole cell is the expand target, so the small "View details" link
+         is a label rather than the only thing you can hit. -->
     <button
       type="button"
-      class="expand-btn"
+      class="row-body expand-part"
       aria-expanded={expanded}
       aria-controls="breakdown-{expense.id}"
       onclick={() => (expanded = !expanded)}
     >
-      <span class="chevron" class:open={expanded} aria-hidden="true">⌄</span>
-      <span>{expanded ? 'Hide details' : 'View details'}</span>
+      <span class="col-others">
+        {@render owedSummary()}
+        <span class="expand-link">
+          <span class="chevron" class:open={expanded} aria-hidden="true">⌄</span>
+          {expanded ? 'Hide details' : 'View details'}
+        </span>
+      </span>
     </button>
+  {:else}
+    <div class="row-body static">
+      <span class="col-others">{@render owedSummary()}</span>
+    </div>
   {/if}
 </div>
 
@@ -196,19 +208,11 @@
 <style>
   .row {
     display: grid;
-    /* Kept identical to ExpenseRowTheirs and the head row. Edit all three
-       together or the columns drift out of alignment. */
-    grid-template-columns: 44px 1fr;
+    /* Gutter, then the two halves. Their widths must stay identical to
+       ExpenseRowTheirs and the head row, or the columns drift apart. */
+    grid-template-columns: 44px 11rem minmax(0, 1fr);
     align-items: stretch;
     border-bottom: 1px solid var(--color-border);
-  }
-
-  .col-check {
-    min-width: 44px;
-  }
-
-  .row {
-    position: relative;
   }
 
   .row.tagged {
@@ -224,22 +228,14 @@
     box-shadow: inset 4px 0 0 var(--tag-color);
   }
 
-  /* Room for the expand control that sits over the bottom of the cell */
-  .row:has(.expand-btn) .col-others {
-    padding-bottom: 26px;
-  }
-
+  /* Each half is its own button now, so the row grid places them rather than
+     an inner grid. The gap lives as padding so the two targets stay adjacent
+     with no dead strip between them. */
   .row-body {
-    display: grid;
-    /* The right column takes the slack. A 1fr/1fr split on a wide screen
-       pushed the two halves to opposite edges with a dead gulf between them,
-       so a row read as two unrelated things. */
-    grid-template-columns: 11rem minmax(0, 1fr);
-    gap: var(--space-md);
+    display: block;
     width: 100%;
     min-width: 0;
     min-height: 60px;
-    padding: var(--space-sm) var(--space-md) var(--space-sm) 0;
     border: none;
     background: none;
     font-family: inherit;
@@ -247,13 +243,40 @@
     cursor: pointer;
   }
 
-  .row-body:hover {
-    background-color: var(--color-bg-secondary);
+  .edit-part {
+    /* Spans the gutter, with padding that keeps the text on the same grid
+       line as rows that do carry a checkbox. */
+    grid-column: 1 / 3;
+    padding: var(--space-sm) 0 var(--space-sm) 44px;
   }
 
+  /* The full inter-column gap sits here, matching ExpenseRowTheirs, whose
+     grid puts its whole gap before the second column. Split it across both
+     halves and the two row types land 8px apart. */
+  .expand-part {
+    padding: var(--space-sm) var(--space-md) var(--space-sm) calc(var(--space-sm) * 2);
+  }
+
+  .row-body.static {
+    cursor: default;
+    padding: var(--space-sm) var(--space-md) var(--space-sm) calc(var(--space-sm) * 2);
+  }
+
+  .expand-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 2px;
+    color: var(--color-primary);
+    font-size: 0.76rem;
+    font-weight: 700;
+  }
+
+  /* Keyboard only, and deliberately quiet: pointer users get no ring, and
+     the brand orange was far too loud for a whole-row outline. */
   .row-body:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: -4px;
+    outline: 2px solid color-mix(in srgb, var(--color-text-primary) 45%, transparent);
+    outline-offset: -3px;
     border-radius: var(--radius-sm);
   }
 
@@ -358,45 +381,22 @@
   }
 
   .settled {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     color: var(--color-success);
     font-size: 0.78rem;
     font-weight: 600;
   }
 
+  .paid-badge {
+    background-color: rgba(34, 197, 94, 0.18);
+    color: var(--color-success);
+  }
+
   .quiet {
     color: var(--color-text-tertiary);
     font-size: 0.75rem;
-  }
-
-  /* Sits in the Everyone Else column, under that cell's text, so it reads as
-     part of this row rather than as a divider between two of them.
-     Absolutely positioned so it does not consume a grid column and break the
-     alignment shared with the other row type. */
-  .expand-btn {
-    position: absolute;
-    left: calc(44px + 11rem + var(--space-md));
-    bottom: var(--space-sm);
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    min-height: 28px;
-    padding: 0 var(--space-sm) 0 0;
-    border: none;
-    background: none;
-    color: var(--color-primary);
-    font-family: inherit;
-    font-size: 0.76rem;
-    font-weight: 700;
-    cursor: pointer;
-  }
-
-  .expand-btn:hover {
-    color: var(--color-text-primary);
-  }
-
-  .expand-btn:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: -2px;
   }
 
   .chevron {
@@ -457,21 +457,18 @@
 
   @media (max-width: 767px) {
     .row {
-      grid-template-columns: 40px 1fr;
+      grid-template-columns: 40px 5.5rem minmax(0, 1fr);
     }
 
-    .col-check {
-      min-width: 40px;
+    .edit-part {
+      padding-left: 40px;
     }
 
-    .row-body {
+    .expand-part,
+    .row-body.static {
       padding-right: var(--space-sm);
-      gap: var(--space-sm);
-      grid-template-columns: 5.5rem minmax(0, 1fr);
-    }
-
-    .expand-btn {
-      left: calc(40px + 5.5rem + var(--space-sm));
+      /* Matches the mobile gap in ExpenseRowTheirs */
+      padding-left: var(--space-sm);
     }
 
     .desc {

@@ -80,8 +80,6 @@
         )}"
       />
     </label>
-  {:else}
-    <span class="col-check"></span>
   {/if}
 
   {#snippet body()}
@@ -112,13 +110,15 @@
     </span>
 
     <span class="col-others">
-      <span class="creator">{creatorName}</span>
+      <!-- Description first, then who paid, so this reads the same way round
+           as the rows for my own expenses. -->
       <span class="desc-line">
         <span class="desc">{expense.description}</span>
         {#if tag}
           <span class="pill tag-pill">{tag.name}</span>
         {/if}
       </span>
+      <span class="creator">{creatorName}</span>
       <span class="meta">
         {formatDateTime(expense.createdAt)}
         {#if expense.dueDate}
@@ -143,7 +143,7 @@
          is undoing the payment, which is what the button does. -->
     <button
       type="button"
-      class="row-body"
+      class="row-body spans-gutter"
       aria-label="Undo your payment of {formatCurrency(myShare)} for {expense.description}"
       onclick={() => onCancelPayment(expense)}
     >
@@ -151,7 +151,7 @@
     </button>
   {:else}
     <!-- Nothing to do on this row, so it must not be focusable -->
-    <div class="row-body static">
+    <div class="row-body static spans-gutter">
       {@render body()}
     </div>
   {/if}
@@ -188,10 +188,11 @@
     box-shadow: inset 4px 0 0 var(--tag-color);
   }
 
-  /* Selection is the thing the user is doing right now, so it is the one
-     state that fills. Kept light enough to read the amounts through. */
+  /* The checkbox already says whether a row is selected, so the fill only has
+     to lift it off the page. A tinted one went muddy: the brand orange over a
+     dark navy mixes to brown, and it sat badly against the red amounts. */
   .row.selected {
-    background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);
+    background-color: color-mix(in srgb, var(--color-text-primary) 7%, transparent);
   }
 
   .row.not-mine {
@@ -217,7 +218,9 @@
        pushed the two halves to opposite edges with a dead gulf between them,
        so a row read as two unrelated things. */
     grid-template-columns: 11rem minmax(0, 1fr);
-    gap: var(--space-md);
+    /* Must equal .expand-part's left padding in ExpenseRowMine, which is
+       where that row type puts the whole inter-column gap. */
+    gap: calc(var(--space-sm) * 2);
     width: 100%;
     min-width: 0;
     min-height: 60px;
@@ -233,13 +236,19 @@
     cursor: default;
   }
 
-  .row-body:not(.static):hover {
-    background-color: var(--color-bg-secondary);
+  /* The gutter stays, so every row type lines up, but with no checkbox in it
+     it belongs to this row's button rather than sitting there dead. The inner
+     padding keeps the text on the same grid line as rows that do have one. */
+  .spans-gutter {
+    grid-column: 1 / -1;
+    padding-left: 44px;
   }
 
+  /* Keyboard only, and deliberately quiet: pointer users get no ring, and
+     the brand orange was far too loud for a whole-row outline. */
   .row-body:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: -4px;
+    outline: 2px solid color-mix(in srgb, var(--color-text-primary) 45%, transparent);
+    outline-offset: -3px;
     border-radius: var(--radius-sm);
   }
 
@@ -258,9 +267,8 @@
   }
 
   .creator {
-    color: var(--color-text-primary);
-    font-size: 0.82rem;
-    font-weight: 700;
+    color: var(--color-text-tertiary);
+    font-size: 0.75rem;
   }
 
   .desc-line {
@@ -272,8 +280,9 @@
   }
 
   .desc {
-    color: var(--color-text-secondary);
-    font-size: 0.85rem;
+    color: var(--color-text-primary);
+    font-size: 0.92rem;
+    font-weight: 600;
     /* Wraps in full rather than truncating */
     overflow-wrap: anywhere;
   }
@@ -384,8 +393,13 @@
       min-width: 40px;
     }
 
+    .spans-gutter {
+      padding-left: 40px;
+    }
+
     .row-body {
       padding-right: var(--space-sm);
+      /* Must equal .expand-part's mobile left padding in ExpenseRowMine */
       gap: var(--space-sm);
       grid-template-columns: 5.5rem minmax(0, 1fr);
     }
