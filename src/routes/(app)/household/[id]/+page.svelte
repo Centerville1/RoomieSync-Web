@@ -148,20 +148,50 @@
     selectedExpenseIds = newSelection;
   }
 
+  // What was ticked before a shortcut replaced the selection wholesale, so
+  // backing out of the modal gives it back. Null when the modal was opened
+  // from the selection itself, which had nothing to overwrite.
+  let selectionBeforeShortcut = $state<Set<string> | null>(null);
+
   function handlePayExpensesClick() {
     if (selectedExpenseIds.size > 0) {
+      selectionBeforeShortcut = null;
       showPayExpensesModal = true;
     }
   }
 
-  function handlePayAll() {
-    selectedExpenseIds = allSelectableExpenseIds;
+  /** Open the pay modal on a set the user did not tick themselves. */
+  function payShortcut(ids: Iterable<string>) {
+    selectionBeforeShortcut = new Set(selectedExpenseIds);
+    selectedExpenseIds = new Set(ids);
     showPayExpensesModal = true;
   }
 
+  function handlePayAll() {
+    payShortcut(allSelectableExpenseIds);
+  }
+
   function handlePaymentComplete() {
+    // Paid, so the old selection is stale: those expenses are settled now.
+    selectionBeforeShortcut = null;
     selectedExpenseIds = new Set();
   }
+
+  // Closing without paying puts back whatever was ticked beforehand, rather
+  // than leaving the shortcut's selection behind for the user to undo by hand.
+  //
+  // Watching `open` fall rather than taking a close callback, because the modal
+  // closes four ways: Cancel, the × , Escape and the backdrop. A callback would
+  // have to be wired to all of them, and a missed one leaves the bug in place.
+  let payModalWasOpen = $state(false);
+  $effect(() => {
+    const isOpen = showPayExpensesModal;
+    if (payModalWasOpen && !isOpen && selectionBeforeShortcut !== null) {
+      selectedExpenseIds = selectionBeforeShortcut;
+      selectionBeforeShortcut = null;
+    }
+    payModalWasOpen = isOpen;
+  });
 
   // Expense pagination state
   let allExpenses = $state([...data.expenses]);
@@ -231,8 +261,7 @@
   }
 
   function payTag(ids: string[]) {
-    selectedExpenseIds = new Set(ids);
-    showPayExpensesModal = true;
+    payShortcut(ids);
   }
 
   /**
@@ -254,8 +283,7 @@
       })
       .map((e) => e.id);
     if (ids.length === 0) return;
-    selectedExpenseIds = new Set(ids);
-    showPayExpensesModal = true;
+    payShortcut(ids);
   }
 
   // The pay modal resolves each selected id against this array, so it must hold
