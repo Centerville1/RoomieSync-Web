@@ -33,7 +33,9 @@
     onEditExpense,
     onCancelPayment,
     onLoadMore,
-    hasMore = false
+    hasMore = false,
+    isAdmin = false,
+    onImportExpense
   }: {
     members?: Member[];
     expenses?: Expense[];
@@ -46,6 +48,9 @@
     onCancelPayment?: (expense: Expense) => void;
     onLoadMore?: () => Promise<void>;
     hasMore?: boolean;
+    isAdmin?: boolean;
+    /** Adds a historic expense: part of the list, since that is what it adds to. */
+    onImportExpense?: () => void;
   } = $props();
 
   function toggleSelected(id: string) {
@@ -92,8 +97,16 @@
 
 <div class="expense-list">
   <div class="head-row">
+    <span class="col-check"></span>
+    <div class="head-cols">
+      <span class="head-label">Mine</span>
+      <span class="head-label">Everyone Else</span>
+    </div>
+    <!-- Right-aligned and labelled: sitting in the checkbox gutter beside
+         "Mine" read as though it selected that column. -->
     {#if allSelectableIds.size > 0 && onSelectionChange}
-      <label class="col-check">
+      <label class="select-all">
+        <span>Select All</span>
         <input
           type="checkbox"
           checked={allSelected}
@@ -103,13 +116,7 @@
             : `Select all ${allSelectableIds.size} expenses you owe on`}
         />
       </label>
-    {:else}
-      <span class="col-check"></span>
     {/if}
-    <div class="head-cols">
-      <span class="head-label">Mine</span>
-      <span class="head-label right">Everyone Else</span>
-    </div>
   </div>
 
   {#if expenses.length === 0}
@@ -139,6 +146,14 @@
       {#if isLoadingMore}<span class="loading">Loading more…</span>{/if}
     </div>
   {/if}
+
+  <!-- Inside the list, because importing puts a row in it -->
+  {#if isAdmin && onImportExpense}
+    <button type="button" class="import-row" onclick={() => onImportExpense()}>
+      <span class="import-plus" aria-hidden="true">+</span>
+      Import an expense
+    </button>
+  {/if}
 </div>
 
 <style>
@@ -153,8 +168,9 @@
 
   .head-row {
     display: grid;
-    /* Must match the row components' columns */
-    grid-template-columns: 44px 1fr;
+    /* Must match the row components' columns, plus a trailing slot for the
+       select-all control. */
+    grid-template-columns: 44px 1fr auto;
     align-items: center;
     min-height: 40px;
     background-color: var(--color-bg-secondary);
@@ -165,13 +181,6 @@
     display: grid;
     place-items: center;
     min-width: 44px;
-  }
-
-  .col-check input {
-    width: 20px;
-    height: 20px;
-    accent-color: var(--color-primary);
-    cursor: pointer;
   }
 
   .head-cols {
@@ -190,8 +199,52 @@
     letter-spacing: 0.04em;
   }
 
-  .head-label.right {
-    text-align: left;
+  .select-all {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    min-height: 34px;
+    padding: 0 var(--space-md) 0 var(--space-sm);
+    color: var(--color-text-secondary);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .select-all input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--color-primary);
+    cursor: pointer;
+  }
+
+  .import-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-xs);
+    width: 100%;
+    min-height: 44px;
+    border: none;
+    border-top: 1px solid var(--color-border);
+    background-color: var(--color-bg-secondary);
+    color: var(--color-text-secondary);
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .import-row:hover {
+    color: var(--color-text-primary);
+  }
+
+  .import-plus {
+    font-size: 1rem;
+    line-height: 1;
   }
 
   .empty {
@@ -221,7 +274,12 @@
     }
 
     .head-row {
-      grid-template-columns: 40px 1fr;
+      grid-template-columns: 40px 1fr auto;
+    }
+
+    .select-all {
+      padding-right: var(--space-sm);
+      font-size: 0.68rem;
     }
 
     .col-check {

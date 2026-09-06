@@ -91,7 +91,12 @@
   let expanded = $state(false);
 </script>
 
-<div class="row" class:tagged={!!tag} style={tag ? `--tag-color: ${tag.color ?? '#6b7fff'}` : ''}>
+<div
+  class="row"
+  class:tagged={!!tag}
+  class:is-optional={expense.isOptional}
+  style={tag ? `--tag-color: ${tag.color ?? '#6b7fff'}` : ''}
+>
   <!-- Empty gutter matching the checkbox column on other rows, so the two
        content columns line up across both row types. -->
   <span class="col-check"></span>
@@ -108,7 +113,7 @@
           <span class="pill tag-pill">{tag.name}</span>
         {/if}
         {#if expense.isOptional}
-          <span class="pill optional-pill">Optional</span>
+          <span class="badge optional-badge" title="Optional expense" aria-hidden="true">?</span>
         {/if}
       </span>
       <span class="meta">
@@ -128,7 +133,7 @@
       {:else if uneven}
         <span class="owed-line">
           {unpaidCount}
-          {unpaidCount === 1 ? 'person owes' : 'people owe'} you
+          {unpaidCount === 1 ? 'person owes' : 'people owe'} you a total of
         </span>
         <span class="owed-amount">{formatCurrency(outstanding)}</span>
       {:else}
@@ -149,8 +154,9 @@
     </span>
   </button>
 
-  <!-- Sibling of the row body, never nested inside it, so a tap on one cannot
-       fire the other and no stopPropagation is needed anywhere. -->
+  <!-- Positioned into the Everyone Else column, where the text is short enough
+       to leave room. A sibling of the row body, never nested inside it, so a
+       tap can only ever hit one of them. -->
   {#if others.length > 0}
     <button
       type="button"
@@ -159,10 +165,8 @@
       aria-controls="breakdown-{expense.id}"
       onclick={() => (expanded = !expanded)}
     >
-      <span class="chevron" class:open={expanded} aria-hidden="true">▸</span>
-      <span class="sr-only">
-        {expanded ? 'Hide' : 'Show'} who owes you for {expense.description}
-      </span>
+      <span class="chevron" class:open={expanded} aria-hidden="true">⌄</span>
+      <span>{expanded ? 'Hide details' : 'View details'}</span>
     </button>
   {/if}
 </div>
@@ -203,12 +207,26 @@
     min-width: 44px;
   }
 
+  .row {
+    position: relative;
+  }
+
   .row.tagged {
     box-shadow: inset 4px 0 0 var(--tag-color);
   }
 
-  .row {
-    position: relative;
+  .row.is-optional {
+    box-shadow: inset 3px 0 0 var(--color-secondary);
+  }
+
+  /* A type colour outranks the optional marker */
+  .row.tagged.is-optional {
+    box-shadow: inset 4px 0 0 var(--tag-color);
+  }
+
+  /* Room for the expand control that sits over the bottom of the cell */
+  .row:has(.expand-btn) .col-others {
+    padding-bottom: 26px;
   }
 
   .row-body {
@@ -235,7 +253,8 @@
 
   .row-body:focus-visible {
     outline: 2px solid var(--color-primary);
-    outline-offset: -2px;
+    outline-offset: -4px;
+    border-radius: var(--radius-sm);
   }
 
   .col-mine,
@@ -283,8 +302,20 @@
     color: var(--color-text-primary);
   }
 
-  .optional-pill {
-    background-color: color-mix(in srgb, var(--color-secondary) 18%, transparent);
+  .badge {
+    display: grid;
+    place-items: center;
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    font-size: 0.68rem;
+    font-weight: 800;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .optional-badge {
+    background-color: rgba(107, 127, 255, 0.18);
     color: var(--color-secondary);
   }
 
@@ -337,19 +368,25 @@
     font-size: 0.75rem;
   }
 
-  /* Absolutely positioned so it does not consume a grid column: the content
-     columns must stay aligned with the other row type, which has no chevron. */
+  /* Sits in the Everyone Else column, under that cell's text, so it reads as
+     part of this row rather than as a divider between two of them.
+     Absolutely positioned so it does not consume a grid column and break the
+     alignment shared with the other row type. */
   .expand-btn {
     position: absolute;
-    right: 0;
-    bottom: 0;
-    display: grid;
-    place-items: center;
-    width: 44px;
-    height: 34px;
+    left: calc(44px + 11rem + var(--space-md));
+    bottom: var(--space-sm);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 28px;
+    padding: 0 var(--space-sm) 0 0;
     border: none;
     background: none;
-    color: var(--color-text-tertiary);
+    color: var(--color-primary);
+    font-family: inherit;
+    font-size: 0.76rem;
+    font-weight: 700;
     cursor: pointer;
   }
 
@@ -365,23 +402,12 @@
   .chevron {
     display: inline-block;
     transition: transform 0.15s;
-    font-size: 0.8rem;
+    font-size: 1rem;
+    line-height: 1;
   }
 
   .chevron.open {
-    transform: rotate(90deg);
-  }
-
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
+    transform: rotate(180deg);
   }
 
   .breakdown {
@@ -442,6 +468,10 @@
       padding-right: var(--space-sm);
       gap: var(--space-sm);
       grid-template-columns: 5.5rem minmax(0, 1fr);
+    }
+
+    .expand-btn {
+      left: calc(40px + 5.5rem + var(--space-sm));
     }
 
     .desc {

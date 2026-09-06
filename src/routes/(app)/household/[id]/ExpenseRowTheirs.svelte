@@ -64,6 +64,9 @@
   class:selected={isSelected}
   class:tagged={!!tag}
   class:not-mine={!inSplit}
+  class:needs-payment={isSelectable}
+  class:is-optional={expense.isOptional}
+  class:is-paid={mySplit?.hasPaid}
   style={tag ? `--tag-color: ${tag.color ?? '#6b7fff'}` : ''}
 >
   {#if isSelectable}
@@ -87,19 +90,24 @@
         <span class="quiet">Not your split</span>
         <span class="quiet-amount">You owe nothing</span>
       {:else if mySplit?.hasPaid}
-        <span class="paid-label">You paid</span>
+        <span class="status-line">
+          <span class="badge paid-badge" aria-hidden="true">✓</span>
+          <span class="paid-label">Paid</span>
+        </span>
         <span class="amount paid">{formatCurrency(myShare)}</span>
         {#if mySplit.paidAt}
           <span class="meta">{formatShortDateTime(mySplit.paidAt)}</span>
         {/if}
       {:else}
-        <span class="owe-label">You owe</span>
+        <span class="status-line">
+          {#if expense.isOptional}
+            <span class="badge optional-badge" title="Optional expense" aria-hidden="true">?</span>
+          {/if}
+          <span class="owe-label">You owe</span>
+        </span>
         <span class="amount owe" class:optional={expense.isOptional}>
           {formatCurrency(myShare)}
         </span>
-        {#if expense.isOptional}
-          <span class="pill optional-pill">Optional</span>
-        {/if}
       {/if}
     </span>
 
@@ -140,7 +148,6 @@
       onclick={() => onCancelPayment(expense)}
     >
       {@render body()}
-      <span class="undo-hint">Undo</span>
     </button>
   {:else}
     <!-- Nothing to do on this row, so it must not be focusable -->
@@ -159,12 +166,32 @@
     border-bottom: 1px solid var(--color-border);
   }
 
-  .row.tagged {
+  /* State reads from a left accent bar rather than a wash over the whole row.
+     A tint dark enough to notice turned the row muddy behind the red amounts,
+     and fought with the focus ring on the button inside it. */
+  .row.needs-payment {
+    box-shadow: inset 3px 0 0 var(--color-error);
+  }
+
+  .row.needs-payment.is-optional {
+    box-shadow: inset 3px 0 0 var(--color-secondary);
+  }
+
+  .row.is-paid {
+    box-shadow: inset 3px 0 0 var(--color-success);
+  }
+
+  /* A tagged row keeps its type colour: the type is the rarer signal */
+  .row.tagged,
+  .row.tagged.needs-payment,
+  .row.tagged.is-paid {
     box-shadow: inset 4px 0 0 var(--tag-color);
   }
 
+  /* Selection is the thing the user is doing right now, so it is the one
+     state that fills. Kept light enough to read the amounts through. */
   .row.selected {
-    background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);
   }
 
   .row.not-mine {
@@ -212,7 +239,8 @@
 
   .row-body:focus-visible {
     outline: 2px solid var(--color-primary);
-    outline-offset: -2px;
+    outline-offset: -4px;
+    border-radius: var(--radius-sm);
   }
 
   .col-mine,
@@ -264,12 +292,6 @@
     color: var(--color-text-primary);
   }
 
-  .optional-pill {
-    align-self: flex-start;
-    background-color: color-mix(in srgb, var(--color-secondary) 18%, transparent);
-    color: var(--color-secondary);
-  }
-
   .meta {
     color: var(--color-text-tertiary);
     font-size: 0.75rem;
@@ -278,6 +300,34 @@
   .due {
     color: var(--color-text-secondary);
     font-weight: 600;
+  }
+
+  .status-line {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .badge {
+    display: grid;
+    place-items: center;
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    font-size: 0.68rem;
+    font-weight: 800;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .paid-badge {
+    background-color: rgba(34, 197, 94, 0.18);
+    color: var(--color-success);
+  }
+
+  .optional-badge {
+    background-color: rgba(107, 127, 255, 0.18);
+    color: var(--color-secondary);
   }
 
   .owe-label,
@@ -319,16 +369,6 @@
     color: var(--color-text-tertiary);
     font-size: 0.85rem;
     font-weight: 600;
-  }
-
-  .undo-hint {
-    position: absolute;
-    right: var(--space-md);
-    bottom: 4px;
-    color: var(--color-text-tertiary);
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
   }
 
   .row-body {

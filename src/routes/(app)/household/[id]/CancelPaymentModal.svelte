@@ -74,7 +74,7 @@
   }
 </script>
 
-<Modal bind:open title="Cancel Payment" size="sm">
+<Modal bind:open title="Undo Payment" size="sm">
   {#snippet children()}
     {#if expense}
       <form
@@ -94,7 +94,7 @@
         <div class="cancel-payment-content">
           <div class="warning-icon">!</div>
 
-          <p class="cancel-intro">Are you sure you want to cancel this payment?</p>
+          <p class="cancel-intro">Undo your payment on this expense?</p>
 
           <div class="expense-details">
             <div class="detail-row">
@@ -118,7 +118,7 @@
           </div>
 
           <p class="warning-text">
-            This will mark the expense as unpaid. You should coordinate with {getMemberDisplayName(
+            This marks the expense unpaid again. You should coordinate with {getMemberDisplayName(
               expense.creatorId
             )} if you need a refund.
           </p>
@@ -128,8 +128,8 @@
   {/snippet}
 
   {#snippet footer()}
-    <Button type="button" variant="ghost" on:click={handleClose}>Keep Payment</Button>
-    <Button type="submit" variant="danger" form="cancel-payment-form">Cancel Payment</Button>
+    <Button type="button" variant="ghost" on:click={handleClose}>Keep It Paid</Button>
+    <Button type="submit" variant="danger" form="cancel-payment-form">Undo Payment</Button>
   {/snippet}
 </Modal>
 

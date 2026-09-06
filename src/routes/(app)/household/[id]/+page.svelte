@@ -425,11 +425,6 @@
             <button type="button" class="manage-tags" onclick={() => (showTagModal = true)}>
               Priority Expense Types
             </button>
-            <!-- One entry point rather than one per member: the import modal
-                 already asks who paid. -->
-            <button type="button" class="manage-tags" onclick={() => handleImportExpense('')}>
-              Import an expense
-            </button>
           {/if}
           {#if allSelectableExpenseIds.size > 0}
             <div class="secondary-cta">
@@ -452,6 +447,8 @@
       />
 
       <ExpenseList
+        isAdmin={data.userRole === 'admin'}
+        onImportExpense={() => handleImportExpense('')}
         members={data.members}
         expenses={allExpenses}
         hasMore={hasMoreExpenses}
