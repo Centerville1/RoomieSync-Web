@@ -19,6 +19,19 @@
   // and the page's bottom padding need to know how tall it is.
   let tabsHeight = $state(0);
 
+  // How much vertical space this sticky header occupies once the banner has
+  // scrolled away. Published so anything else that wants to stick below it,
+  // like the expense list's column headers, can offset exactly rather than
+  // guessing a height that changes with the breakpoint.
+  let headerHeight = $state(0);
+
+  $effect(() => {
+    const visible = headerHeight - bannerHeight;
+    if (visible > 0) {
+      document.documentElement.style.setProperty('--household-header-height', `${visible}px`);
+    }
+  });
+
   $effect(() => {
     if (tabsHeight > 0) {
       document.documentElement.style.setProperty('--tabbar-height', `${tabsHeight}px`);
@@ -61,7 +74,11 @@
   {/if}
 
   <!-- Household Header -->
-  <header class="household-header" style="--banner-height: {bannerHeight}px">
+  <header
+    class="household-header"
+    style="--banner-height: {bannerHeight}px"
+    bind:clientHeight={headerHeight}
+  >
     {#if data.household.bannerUrl}
       <div
         class="banner"

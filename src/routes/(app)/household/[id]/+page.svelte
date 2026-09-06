@@ -12,7 +12,8 @@
   import ImportExpenseModal from './ImportExpenseModal.svelte';
   import CancelPaymentModal from './CancelPaymentModal.svelte';
   import NudgeModal from './NudgeModal.svelte';
-  import ExpenseGrid from './ExpenseGrid.svelte';
+  import ExpenseList from './ExpenseList.svelte';
+  import MemberBalanceList from './MemberBalanceList.svelte';
   import BalanceChart from './BalanceChart.svelte';
   import HouseholdInfoCard from './HouseholdInfoCard.svelte';
   import TagManagerModal from './TagManagerModal.svelte';
@@ -234,6 +235,29 @@
     showPayExpensesModal = true;
   }
 
+  /**
+   * Everything I still owe one person, across every page.
+   *
+   * From unpaidExpenses rather than the loaded rows, for the same reason
+   * select-all is: their older expenses are just as payable.
+   */
+  function payPerson(memberId: string) {
+    const ids = data.unpaidExpenses
+      .filter((e) => {
+        if (e.creatorId !== memberId) return false;
+        // Optional expenses are excluded from the youOwe figure on the chip, so
+        // selecting them here would open the modal on a larger total than the
+        // chip promised. They stay individually selectable in the list.
+        if (e.isOptional) return false;
+        const mine = e.splits.find((sp) => sp.userId === data.currentUserId);
+        return mine !== undefined && !mine.hasPaid;
+      })
+      .map((e) => e.id);
+    if (ids.length === 0) return;
+    selectedExpenseIds = new Set(ids);
+    showPayExpensesModal = true;
+  }
+
   // The pay modal resolves each selected id against this array, so it must hold
   // the unpaid expenses even when they are not on the loaded page. Loaded rows
   // win, since they carry the creator object the grid renders.
@@ -242,6 +266,15 @@
     for (const e of allExpenses) byId.set(e.id, e);
     return [...byId.values()];
   });
+
+  // What the selection actually costs. Reduced over payableExpenses, the same
+  // array PayExpensesModal resolves against, so the bar and the modal cannot
+  // disagree: allExpenses would miss selections from pages not yet loaded.
+  const selectedTotal = $derived(
+    payableExpenses
+      .filter((e) => selectedExpenseIds.has(e.id))
+      .reduce((sum, e) => sum + shareFor(e, data.currentUserId), 0)
+  );
 
   async function loadMoreExpenses() {
     const response = await fetch(
@@ -402,7 +435,20 @@
           {/if}
         </div>
       </div>
-      <ExpenseGrid
+      <!-- Who owes whom, between the actions and the list: it is context for
+           reading the list, not part of the balance summary above. -->
+      <MemberBalanceList
+        members={data.members}
+        currentUserId={data.currentUserId}
+        memberBalances={data.memberBalances}
+        nudgesSent={data.nudgesSent}
+        onNudge={handleNudge}
+        onPayPerson={payPerson}
+      />
+
+      <ExpenseList
+        isAdmin={data.userRole === 'admin'}
+        onImportExpense={() => handleImportExpense('')}
         members={data.members}
         expenses={allExpenses}
         hasMore={hasMoreExpenses}
@@ -412,15 +458,8 @@
         onSelectionChange={handleSelectionChange}
         allSelectableIds={allSelectableExpenseIds}
         tags={data.tags}
-        memberBalances={data.memberBalances}
         onEditExpense={handleEditExpense}
-        onDeleteExpense={handleDeleteExpense}
-        isAdmin={data.userRole === 'admin'}
-        onImportExpense={handleImportExpense}
-        onPayExpenses={handlePayExpensesClick}
         onCancelPayment={handleCancelPayment}
-        nudgesSent={data.nudgesSent}
-        onNudge={handleNudge}
       />
     </section>
 
@@ -459,7 +498,8 @@
 {#if selectedExpenseIds.size > 0}
   <div class="pay-selected-bar" role="region" aria-label="Selected expenses">
     <Button variant="primary" size="lg" on:click={handlePayExpensesClick}>
-      Pay Selected ({selectedExpenseIds.size})
+      Pay {selectedExpenseIds.size}
+      {selectedExpenseIds.size === 1 ? 'expense' : 'expenses'} · {formatCurrency(selectedTotal)}
     </Button>
   </div>
 {/if}
@@ -494,6 +534,7 @@
   expense={selectedExpenseForEdit}
   members={data.members}
   tags={data.tags}
+  onRequestDelete={handleDeleteExpense}
 />
 
 <!-- Delete Expense Modal -->
@@ -744,7 +785,7 @@
   }
 
   /* No bottom margin: the grid is the last thing on the page for most users,
-     and ExpenseGrid already carries its own spacing. */
+     and the expense list already carries its own spacing. */
   .expenses-grid-section {
     margin-bottom: 0;
   }
