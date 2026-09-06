@@ -103,10 +103,9 @@
 <div class="expense-list">
   <div class="head-row" bind:clientHeight={headRowHeight}>
     <span class="col-check"></span>
-    <div class="head-cols">
-      <span class="head-label">Mine</span>
-      <span class="head-label">Everyone Else</span>
-    </div>
+    <span class="head-label">Mine</span>
+    <span class="head-label">Everyone Else</span>
+    <span class="head-label detail">Who Owes You</span>
     <!-- Right-aligned and labelled: sitting in the checkbox gutter beside
          "Mine" read as though it selected that column. -->
     {#if allSelectableIds.size > 0 && onSelectionChange}
@@ -186,9 +185,10 @@
     top: calc(var(--navbar-height, 5.5rem) + var(--household-header-height, 0px));
     z-index: 30;
     display: grid;
-    /* Must match the row components' columns, plus a trailing slot for the
-       select-all control. */
-    grid-template-columns: 44px 1fr auto;
+    /* The row components' own tracks, not a nested grid inside a 1fr: nesting
+       computed different widths and left every label off its column. The
+       trailing auto slot holds select-all. */
+    grid-template-columns: 44px 11rem minmax(0, 1fr) minmax(0, 1fr);
     align-items: center;
     min-height: 40px;
     background-color: var(--color-bg-secondary);
@@ -203,12 +203,24 @@
     min-width: 44px;
   }
 
-  .head-cols {
-    display: grid;
-    /* Must match .row-body in both row components */
-    grid-template-columns: 11rem minmax(0, 1fr);
-    gap: var(--space-md);
-    padding-right: var(--space-md);
+  /* Each column's content starts inside its track, so the labels carry the
+     same left padding as the cells they head. */
+  .head-label:nth-of-type(2) {
+    padding-left: calc(var(--space-sm) * 2);
+  }
+
+  .head-label.detail {
+    padding-left: var(--space-md);
+  }
+
+  @media (max-width: 1099px) {
+    .head-row {
+      grid-template-columns: 44px 11rem minmax(0, 1fr);
+    }
+
+    .head-label.detail {
+      display: none;
+    }
   }
 
   .head-label {
@@ -220,6 +232,10 @@
   }
 
   .select-all {
+    /* In the last track rather than a track of its own: an auto track would
+       narrow the flexible ones and the labels would stop matching the rows. */
+    grid-column: -2;
+    justify-self: end;
     display: inline-flex;
     align-items: center;
     gap: var(--space-xs);
@@ -307,7 +323,11 @@
     }
 
     .head-row {
-      grid-template-columns: 40px 1fr auto;
+      grid-template-columns: 40px 5.5rem minmax(0, 1fr);
+    }
+
+    .head-label:nth-of-type(2) {
+      padding-left: var(--space-sm);
     }
 
     .select-all {
@@ -317,12 +337,6 @@
 
     .col-check {
       min-width: 40px;
-    }
-
-    .head-cols {
-      grid-template-columns: 5.5rem minmax(0, 1fr);
-      gap: var(--space-sm);
-      padding-right: var(--space-sm);
     }
   }
 </style>

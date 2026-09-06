@@ -217,7 +217,10 @@
     /* The right column takes the slack. A 1fr/1fr split on a wide screen
        pushed the two halves to opposite edges with a dead gulf between them,
        so a row read as two unrelated things. */
-    grid-template-columns: 11rem minmax(0, 1fr);
+    /* Third track matches ExpenseRowMine's detail column, so both row types
+       line up on wide screens. Nothing fills it here: an expense someone else
+       paid has no per-person breakdown to show. */
+    grid-template-columns: 11rem minmax(0, 1fr) minmax(0, 1fr);
     /* Must equal .expand-part's left padding in ExpenseRowMine, which is
        where that row type puts the whole inter-column gap. */
     gap: calc(var(--space-sm) * 2);
@@ -382,6 +385,12 @@
 
   .row-body {
     position: relative;
+  }
+
+  @media (max-width: 1099px) {
+    .row-body {
+      grid-template-columns: 11rem minmax(0, 1fr);
+    }
   }
 
   @media (max-width: 767px) {

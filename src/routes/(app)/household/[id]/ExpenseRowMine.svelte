@@ -89,6 +89,20 @@
   const eachOwes = $derived(others.length > 0 ? shareFor(expense, others[0].userId) : 0);
 
   let expanded = $state(false);
+
+  // Above this width the breakdown is a permanent column, so expanding would
+  // just repeat it underneath. Matches the 1100px breakpoint in the styles.
+  let wideEnoughForDetail = $state(false);
+  $effect(() => {
+    const mq = window.matchMedia('(min-width: 1100px)');
+    const sync = () => {
+      wideEnoughForDetail = mq.matches;
+      if (mq.matches) expanded = false;
+    };
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  });
 </script>
 
 <div
@@ -158,24 +172,51 @@
     {/if}
   {/snippet}
 
+  {#snippet breakdownRows()}
+    {#each perPerson as person (person.userId)}
+      <span class="bd-line">
+        <span class="bd-name">{person.name}</span>
+        {#if person.hasPaid}
+          <span class="bd-paid">
+            <span class="badge paid-badge" aria-hidden="true">✓</span>
+            {formatCurrency(person.amount)}
+          </span>
+        {:else}
+          <span class="bd-owes">{formatCurrency(person.amount)}</span>
+        {/if}
+      </span>
+    {/each}
+  {/snippet}
+
   {#if others.length > 0}
     <!-- The whole cell is the expand target, so the small "View details" link
          is a label rather than the only thing you can hit. -->
     <button
       type="button"
       class="row-body expand-part"
-      aria-expanded={expanded}
-      aria-controls="breakdown-{expense.id}"
-      onclick={() => (expanded = !expanded)}
+      aria-expanded={wideEnoughForDetail ? undefined : expanded}
+      aria-controls={wideEnoughForDetail ? undefined : `breakdown-${expense.id}`}
+      onclick={() => {
+        if (!wideEnoughForDetail) expanded = !expanded;
+      }}
     >
       <span class="col-others">
         {@render owedSummary()}
+        <!-- Only an affordance where the breakdown is hidden: on a wide screen
+             it is already on screen in the third column. -->
         <span class="expand-link">
           <span class="chevron" class:open={expanded} aria-hidden="true">⌄</span>
           {expanded ? 'Hide details' : 'View details'}
         </span>
       </span>
     </button>
+
+    <!-- The third column, on wide screens only. The space is there and the
+         figures are already computed, so there is no reason to make someone
+         click for them. -->
+    <span class="col-detail">
+      {@render breakdownRows()}
+    </span>
   {:else}
     <div class="row-body static">
       <span class="col-others">{@render owedSummary()}</span>
@@ -208,11 +249,54 @@
 <style>
   .row {
     display: grid;
-    /* Gutter, then the two halves. Their widths must stay identical to
-       ExpenseRowTheirs and the head row, or the columns drift apart. */
-    grid-template-columns: 44px 11rem minmax(0, 1fr);
+    /* Gutter, the two halves, then the detail column. Their widths must stay
+       identical to ExpenseRowTheirs and the head row, or the columns drift. */
+    grid-template-columns: 44px 11rem minmax(0, 1fr) minmax(0, 1fr);
     align-items: stretch;
     border-bottom: 1px solid var(--color-border);
+  }
+
+  /* The breakdown, always on screen where there is room for it. */
+  .col-detail {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1px;
+    min-width: 0;
+    padding: var(--space-sm) var(--space-md) var(--space-sm) var(--space-md);
+    border-left: 1px solid var(--color-border);
+  }
+
+  .bd-line {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    min-width: 0;
+    font-size: 0.78rem;
+  }
+
+  .bd-line .bd-name {
+    color: var(--color-text-secondary);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .bd-line .bd-owes {
+    color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+
+  .bd-line .bd-paid {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--color-success);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
   }
 
   .row.tagged {
@@ -453,6 +537,28 @@
     border-top: 1px solid var(--color-border);
     color: var(--color-text-secondary);
     font-size: 0.75rem;
+  }
+
+  /* Wide screens have the room, so the breakdown is simply shown and the
+     expand affordance is redundant. Narrow screens keep tap-to-expand. */
+  @media (min-width: 1100px) {
+    .expand-link {
+      display: none;
+    }
+
+    .expand-part {
+      cursor: default;
+    }
+  }
+
+  @media (max-width: 1099px) {
+    .row {
+      grid-template-columns: 44px 11rem minmax(0, 1fr);
+    }
+
+    .col-detail {
+      display: none;
+    }
   }
 
   @media (max-width: 767px) {
