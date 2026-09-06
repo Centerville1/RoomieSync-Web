@@ -119,6 +119,15 @@
     {/if}
   </div>
 
+  <!-- Above the first row, not below the last: at the foot of a list this long
+       nobody would ever scroll to it. -->
+  {#if isAdmin && onImportExpense}
+    <button type="button" class="import-row" onclick={() => onImportExpense()}>
+      <span class="import-plus" aria-hidden="true">+</span>
+      Import an expense
+    </button>
+  {/if}
+
   {#if expenses.length === 0}
     <p class="empty">No expenses yet. Split the cost of something to get started.</p>
   {:else}
@@ -146,14 +155,6 @@
       {#if isLoadingMore}<span class="loading">Loading more…</span>{/if}
     </div>
   {/if}
-
-  <!-- Inside the list, because importing puts a row in it -->
-  {#if isAdmin && onImportExpense}
-    <button type="button" class="import-row" onclick={() => onImportExpense()}>
-      <span class="import-plus" aria-hidden="true">+</span>
-      Import an expense
-    </button>
-  {/if}
 </div>
 
 <style>
@@ -161,12 +162,19 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     background-color: var(--color-bg-primary);
-    overflow: hidden;
     /* Deliberately no overflow-x: anything too wide should visibly break so it
-       gets fixed, rather than hiding behind a scrollbar. */
+       gets fixed, rather than hiding behind a scrollbar. `overflow: hidden`
+       would also trap the sticky header below, so the corners are clipped by
+       the rows themselves instead. */
   }
 
+  /* Sticks below the household header, whose height it reads rather than
+     guessing: that height changes with the breakpoint and with whether the
+     household has a banner. */
   .head-row {
+    position: sticky;
+    top: calc(var(--navbar-height, 5.5rem) + var(--household-header-height, 0px));
+    z-index: 30;
     display: grid;
     /* Must match the row components' columns, plus a trailing slot for the
        select-all control. */
@@ -175,6 +183,8 @@
     min-height: 40px;
     background-color: var(--color-bg-secondary);
     border-bottom: 1px solid var(--color-border);
+    border-top-left-radius: var(--radius-lg);
+    border-top-right-radius: var(--radius-lg);
   }
 
   .col-check {
@@ -227,9 +237,9 @@
     justify-content: center;
     gap: var(--space-xs);
     width: 100%;
-    min-height: 44px;
+    min-height: 40px;
     border: none;
-    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
     background-color: var(--color-bg-secondary);
     color: var(--color-text-secondary);
     font-family: inherit;
@@ -271,6 +281,10 @@
       border-radius: 0;
       border-left: none;
       border-right: none;
+    }
+
+    .head-row {
+      border-radius: 0;
     }
 
     .head-row {
