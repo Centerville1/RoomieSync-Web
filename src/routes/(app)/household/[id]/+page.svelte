@@ -12,7 +12,8 @@
   import ImportExpenseModal from './ImportExpenseModal.svelte';
   import CancelPaymentModal from './CancelPaymentModal.svelte';
   import NudgeModal from './NudgeModal.svelte';
-  import ExpenseGrid from './ExpenseGrid.svelte';
+  import ExpenseList from './ExpenseList.svelte';
+  import MemberBalanceList from './MemberBalanceList.svelte';
   import BalanceChart from './BalanceChart.svelte';
   import HouseholdInfoCard from './HouseholdInfoCard.svelte';
   import TagManagerModal from './TagManagerModal.svelte';
@@ -243,6 +244,15 @@
     return [...byId.values()];
   });
 
+  // What the selection actually costs. Reduced over payableExpenses, the same
+  // array PayExpensesModal resolves against, so the bar and the modal cannot
+  // disagree: allExpenses would miss selections from pages not yet loaded.
+  const selectedTotal = $derived(
+    payableExpenses
+      .filter((e) => selectedExpenseIds.has(e.id))
+      .reduce((sum, e) => sum + shareFor(e, data.currentUserId), 0)
+  );
+
   async function loadMoreExpenses() {
     const response = await fetch(
       `/api/household/${data.household.id}/expenses?offset=${allExpenses.length}`
@@ -392,6 +402,11 @@
             <button type="button" class="manage-tags" onclick={() => (showTagModal = true)}>
               Priority Expense Types
             </button>
+            <!-- One entry point rather than one per member: the import modal
+                 already asks who paid. -->
+            <button type="button" class="manage-tags" onclick={() => handleImportExpense('')}>
+              Import an expense
+            </button>
           {/if}
           {#if allSelectableExpenseIds.size > 0}
             <div class="secondary-cta">
@@ -402,7 +417,17 @@
           {/if}
         </div>
       </div>
-      <ExpenseGrid
+      <!-- Who owes whom, between the actions and the list: it is context for
+           reading the list, not part of the balance summary above. -->
+      <MemberBalanceList
+        members={data.members}
+        currentUserId={data.currentUserId}
+        memberBalances={data.memberBalances}
+        nudgesSent={data.nudgesSent}
+        onNudge={handleNudge}
+      />
+
+      <ExpenseList
         members={data.members}
         expenses={allExpenses}
         hasMore={hasMoreExpenses}
@@ -412,15 +437,8 @@
         onSelectionChange={handleSelectionChange}
         allSelectableIds={allSelectableExpenseIds}
         tags={data.tags}
-        memberBalances={data.memberBalances}
         onEditExpense={handleEditExpense}
-        onDeleteExpense={handleDeleteExpense}
-        isAdmin={data.userRole === 'admin'}
-        onImportExpense={handleImportExpense}
-        onPayExpenses={handlePayExpensesClick}
         onCancelPayment={handleCancelPayment}
-        nudgesSent={data.nudgesSent}
-        onNudge={handleNudge}
       />
     </section>
 
@@ -459,7 +477,8 @@
 {#if selectedExpenseIds.size > 0}
   <div class="pay-selected-bar" role="region" aria-label="Selected expenses">
     <Button variant="primary" size="lg" on:click={handlePayExpensesClick}>
-      Pay Selected ({selectedExpenseIds.size})
+      Pay {selectedExpenseIds.size}
+      {selectedExpenseIds.size === 1 ? 'expense' : 'expenses'} · {formatCurrency(selectedTotal)}
     </Button>
   </div>
 {/if}
@@ -494,6 +513,7 @@
   expense={selectedExpenseForEdit}
   members={data.members}
   tags={data.tags}
+  onRequestDelete={handleDeleteExpense}
 />
 
 <!-- Delete Expense Modal -->
@@ -744,7 +764,7 @@
   }
 
   /* No bottom margin: the grid is the last thing on the page for most users,
-     and ExpenseGrid already carries its own spacing. */
+     and the expense list already carries its own spacing. */
   .expenses-grid-section {
     margin-bottom: 0;
   }

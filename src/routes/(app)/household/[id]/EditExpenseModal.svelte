@@ -9,7 +9,7 @@
 
   type ExpenseSplit = {
     userId: string;
-    amount?: number | null;
+    amount: number | null;
     hasPaid: boolean;
     paidAt: Date | null;
   };
@@ -38,12 +38,15 @@
     open = $bindable(false),
     expense = null,
     members = [],
-    tags = []
+    tags = [],
+    onRequestDelete
   }: {
     open: boolean;
     expense: Expense | null;
     members: Member[];
     tags?: Tag[];
+    /** Deleting lives here now: the grid no longer has a trash icon. */
+    onRequestDelete?: (expense: Expense) => void;
   } = $props();
 
   let description = $state('');
@@ -485,6 +488,19 @@
   {/snippet}
 
   {#snippet footer()}
+    {#if onRequestDelete && expense}
+      <Button
+        type="button"
+        variant="ghost"
+        on:click={() => {
+          const target = expense;
+          handleClose();
+          if (target) onRequestDelete(target);
+        }}
+      >
+        <span class="delete-label">Delete</span>
+      </Button>
+    {/if}
     <Button type="button" variant="ghost" on:click={handleClose}>Cancel</Button>
     <Button
       type="submit"
@@ -498,6 +514,12 @@
 </Modal>
 
 <style>
+  /* Ghost button so it does not compete with Save, red so it is unmistakable */
+  .delete-label {
+    color: var(--color-error);
+    font-weight: 700;
+  }
+
   .tag-label {
     display: block;
     margin-bottom: var(--space-xs);
