@@ -1,13 +1,13 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { db } from '$lib/server/db/client';
-import { households, householdMembers, invites } from '$lib/server/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { households, householdMembers, invites, paymentMethods } from '$lib/server/db/schema';
+import { eq, and, count } from 'drizzle-orm';
 import { generateId } from '$lib/server/utils';
 
 export const load: PageServerLoad = async ({ locals }) => {
   if (!locals.user) {
-    return { households: [], archivedHouseholds: [], pendingInvites: [] };
+    return { households: [], archivedHouseholds: [], pendingInvites: [], paymentMethodCount: 0 };
   }
 
   // Fetch user's households
@@ -42,10 +42,18 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   // Archived households are split out rather than filtered away: members keep
   // access to the history, they just move out of the main list.
+  // How many ways this user can be paid. Drives the prompt below the household
+  // list: the feature is invisible until people fill it in, so it has to ask.
+  const methodCount = await db
+    .select({ count: count() })
+    .from(paymentMethods)
+    .where(eq(paymentMethods.userId, locals.user.id));
+
   return {
     households: userHouseholds.filter((h) => h.archivedAt === null),
     archivedHouseholds: userHouseholds.filter((h) => h.archivedAt !== null),
-    pendingInvites
+    pendingInvites,
+    paymentMethodCount: methodCount[0]?.count ?? 0
   };
 };
 

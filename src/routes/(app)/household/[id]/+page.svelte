@@ -553,6 +553,7 @@
   reverseExpenses={data.reverseExpenses}
   members={data.members}
   currentUserId={data.currentUserId}
+  paymentMethodsByUser={data.paymentMethodsByUser}
   onPaymentComplete={handlePaymentComplete}
 />
 

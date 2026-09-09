@@ -2,6 +2,8 @@
   import { shareFor } from '$lib/splits';
   import Modal from '$lib/components/Modal.svelte';
   import CopyAmount from '$lib/components/CopyAmount.svelte';
+  import CopyHandle from '$lib/components/CopyHandle.svelte';
+  import { providerById, formatHandle, paymentLink } from '$lib/payment-methods';
   import Button from '$lib/components/Button.svelte';
   import { enhance } from '$app/forms';
 
@@ -44,7 +46,8 @@
     reverseExpenses = [],
     members = [],
     currentUserId = '',
-    onPaymentComplete
+    onPaymentComplete,
+    paymentMethodsByUser = {}
   }: {
     open: boolean;
     selectedExpenseIds: Set<string>;
@@ -53,10 +56,19 @@
     members: Member[];
     currentUserId: string;
     onPaymentComplete?: () => void;
+    /** How each member wants to be paid, keyed by user id. */
+    paymentMethodsByUser?: Record<
+      string,
+      Array<{ provider: string; handle: string; isPreferred: boolean }>
+    >;
   } = $props();
 
   let showExpenseDetails = $state(false);
   let cancelOutAccepted = $state<Record<string, boolean>>({});
+
+  // Which recipient's alternate methods are open. One at a time: several
+  // expanded at once turns a payment list into a wall.
+  let expandedMethodsFor = $state<string | null>(null);
   let cancelOutDetailsShown = $state<Record<string, boolean>>({});
 
   // Reset state when modal opens
@@ -201,6 +213,32 @@
   }
 </script>
 
+{#snippet payMethod(
+  method: { provider: string; handle: string; isPreferred: boolean },
+  amount: number,
+  isPrimary: boolean
+)}
+  {@const meta = providerById(method.provider)}
+  {@const link = paymentLink(method.provider, method.handle, amount)}
+  <div class="pay-method" class:primary={isPrimary}>
+    <span class="pm-head">
+      <span class="pm-name">{meta?.name ?? method.provider}</span>
+      <CopyHandle
+        handle={formatHandle(method.provider, method.handle)}
+        label="{meta?.name ?? method.provider} handle"
+      />
+    </span>
+    {#if link}
+      <a class="pm-link" href={link.href} target="_blank" rel="noopener noreferrer">
+        {link.label}
+        <span class="pm-arrow" aria-hidden="true">↗</span>
+      </a>
+    {:else}
+      <span class="pm-nolink">Copy and paste into your bank app</span>
+    {/if}
+  </div>
+{/snippet}
+
 <Modal bind:open title="Pay Expenses" size="md">
   {#snippet children()}
     <form
@@ -240,23 +278,93 @@
               {@const data = cancelOutData()[payment.creatorId]}
               {@const accepted = cancelOutAccepted[payment.creatorId]}
               {@const effective = getEffectiveAmount(payment.creatorId)}
+              {@const methods = paymentMethodsByUser[payment.creatorId] ?? []}
+              {@const primary = methods[0]}
+              {@const alternates = methods.slice(1)}
+              {@const primaryMeta = primary ? providerById(primary.provider) : undefined}
+              {@const primaryLink = primary
+                ? paymentLink(primary.provider, primary.handle, effective)
+                : null}
               <div class="payment-item-block">
-                <div class="payment-item">
-                  <span class="payment-recipient">Send to {payment.name}</span>
-                  <span class="payment-amount-group">
-                    {#if accepted && data && data.cancelOutAmount > 0}
-                      <span class="payment-amount-original">{formatCurrency(payment.amount)}</span>
-                      {#if effective > 0}
-                        <!-- The amount actually being sent is the one worth
-                             copying, not the pre-cancel-out figure. -->
-                        <CopyAmount amount={effective} label="Amount to send {payment.name}" />
-                      {:else}
-                        <span class="payment-amount-zero">$0.00</span>
-                      {/if}
+                <!-- One card per recipient. The headline says who, how much and
+                     by what method in a single sentence, because that is the
+                     whole instruction: "Send Aidan $13.86 via Zelle". -->
+                <div class="payment-head">
+                  <div class="payment-line">
+                    <span class="payment-recipient">
+                      Send {payment.name}
+                    </span>
+                    {#if accepted && data && data.cancelOutAmount > 0 && effective === 0}
+                      <span class="payment-amount-zero">nothing</span>
                     {:else}
-                      <CopyAmount amount={payment.amount} label="Amount to send {payment.name}" />
+                      {#if accepted && data && data.cancelOutAmount > 0}
+                        <span class="payment-amount-original">{formatCurrency(payment.amount)}</span
+                        >
+                      {/if}
+                      <CopyAmount
+                        amount={accepted && data && data.cancelOutAmount > 0
+                          ? effective
+                          : payment.amount}
+                        label="Amount to send {payment.name}"
+                      />
                     {/if}
-                  </span>
+                    {#if primaryMeta}
+                      <span class="payment-via">via {primaryMeta.name}</span>
+                    {/if}
+                  </div>
+
+                  {#if primary && effective > 0}
+                    <div class="payment-handle-row">
+                      <CopyHandle
+                        handle={formatHandle(primary.provider, primary.handle)}
+                        label="{primaryMeta?.name ?? primary.provider} handle"
+                      />
+                      {#if primaryLink}
+                        <a
+                          class="pm-link"
+                          href={primaryLink.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {primaryLink.label}
+                          <span class="pm-arrow" aria-hidden="true">↗</span>
+                        </a>
+                      {/if}
+                    </div>
+                  {:else if effective > 0}
+                    <p class="payment-nomethod">
+                      {payment.name} has not said how to pay them yet.
+                    </p>
+                  {/if}
+
+                  {#if alternates.length > 0 && effective > 0}
+                    <button
+                      type="button"
+                      class="pm-more"
+                      aria-expanded={expandedMethodsFor === payment.creatorId}
+                      aria-controls="alt-methods-{payment.creatorId}"
+                      onclick={() =>
+                        (expandedMethodsFor =
+                          expandedMethodsFor === payment.creatorId ? null : payment.creatorId)}
+                    >
+                      <span
+                        class="pm-chevron"
+                        class:open={expandedMethodsFor === payment.creatorId}
+                        aria-hidden="true">⌄</span
+                      >
+                      {expandedMethodsFor === payment.creatorId
+                        ? 'Hide other ways'
+                        : `Other ways to pay ${payment.name} (${alternates.length})`}
+                    </button>
+
+                    {#if expandedMethodsFor === payment.creatorId}
+                      <div class="pm-alternates" id="alt-methods-{payment.creatorId}">
+                        {#each alternates as method (method.provider + method.handle)}
+                          {@render payMethod(method, effective, false)}
+                        {/each}
+                      </div>
+                    {/if}
+                  {/if}
                 </div>
 
                 <!-- Cancel-out offer -->
@@ -398,17 +506,17 @@
           </div>
         {/if}
 
-        <div class="payment-instructions">
-          {#if effectiveTotal === 0 && hasCancelOut}
+        <!-- Only kept for the zero case, where the reason nothing needs sending
+             is not otherwise obvious. The generic "send the amounts via Venmo,
+             Zelle, etc." is gone: each card now names the actual method, so
+             restating it in the abstract only added noise. -->
+        {#if effectiveTotal === 0 && hasCancelOut}
+          <div class="payment-instructions">
             <p class="instructions-text instructions-zero">
-              All debts fully cancel out -- click "Confirm" to mark everything as paid.
+              Everything cancels out. Mark as paid to settle up.
             </p>
-          {:else}
-            <p class="instructions-text">
-              Send the amounts above via Venmo, Zelle, etc., then click "Mark as Paid".
-            </p>
-          {/if}
-        </div>
+          </div>
+        {/if}
       </div>
     </form>
   {/snippet}
@@ -424,6 +532,135 @@
 </Modal>
 
 <style>
+  .pay-method {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+  }
+
+  .pm-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-sm);
+    min-width: 0;
+  }
+
+  .pm-name {
+    color: var(--color-text-primary);
+    font-size: 0.8rem;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  /* A real button rather than a text link: this is the action most people
+     want, and it needs to look like one on a phone. */
+  .pm-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 36px;
+    padding: 0 var(--space-md);
+    border: 1px solid var(--color-primary);
+    border-radius: 999px;
+    color: var(--color-primary);
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .pm-link:hover {
+    background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    text-decoration: none;
+  }
+
+  .pm-link:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  .pm-arrow {
+    font-size: 0.68rem;
+  }
+
+  /* Says why there is no button, rather than leaving a gap that reads as a
+     missing feature. */
+  .pm-nolink {
+    color: var(--color-text-tertiary);
+    font-size: 0.72rem;
+    font-style: italic;
+  }
+
+  .pm-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    align-self: flex-start;
+    min-height: 32px;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--color-text-secondary);
+    font-family: inherit;
+    font-size: 0.76rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .pm-more:hover {
+    color: var(--color-text-primary);
+  }
+
+  .pm-more:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-text-primary) 45%, transparent);
+    outline-offset: 3px;
+    border-radius: var(--radius-sm);
+  }
+
+  .pm-chevron {
+    display: inline-block;
+    font-size: 0.9rem;
+    line-height: 1;
+    transition: transform 0.15s;
+  }
+
+  .pm-chevron.open {
+    transform: rotate(180deg);
+  }
+
+  .pm-alternates {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    padding: var(--space-sm) 0 var(--space-xs) var(--space-sm);
+    border-left: 2px solid var(--color-border);
+  }
+
+  /* An alternate is a fallback, so it sits quieter than the preferred one */
+  .pm-alternates .pm-link {
+    border-color: var(--color-border);
+    color: var(--color-text-secondary);
+  }
+
+  .pm-alternates .pm-link:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+
+  @media (max-width: 767px) {
+    .pay-method {
+      align-items: flex-start;
+    }
+
+    .pm-head {
+      flex-direction: column;
+      gap: 0;
+    }
+  }
+
   .payment-summary {
     display: flex;
     flex-direction: column;
@@ -539,32 +776,63 @@
     flex-direction: column;
   }
 
+  /* One card per recipient: everything about paying this person, including
+     the cancel-out, lives inside a single bordered box. The old version split
+     the same information across three dashed dividers, which read as three
+     unrelated sections. */
   .payment-item-block {
-    border-bottom: 1px solid var(--color-border);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-primary);
+    margin-bottom: var(--space-sm);
+    overflow: hidden;
   }
 
   .payment-item-block:last-child {
-    border-bottom: none;
+    margin-bottom: 0;
   }
 
-  .payment-item {
+  .payment-head {
     display: flex;
-    justify-content: space-between;
+    flex-direction: column;
+    gap: var(--space-xs);
+    padding: var(--space-md);
+  }
+
+  /* Reads as one sentence: Send Aidan $13.86 via Zelle */
+  .payment-line {
+    display: flex;
     align-items: center;
-    padding: var(--space-md) var(--space-lg);
+    gap: var(--space-xs);
+    flex-wrap: wrap;
+  }
+
+  .payment-via {
+    color: var(--color-text-secondary);
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+
+  /* Small, under the headline, because it is a detail you copy rather than
+     something to read every time. */
+  .payment-handle-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+  }
+
+  .payment-nomethod {
+    margin: 0;
+    color: var(--color-text-tertiary);
+    font-size: 0.78rem;
+    font-style: italic;
   }
 
   .payment-recipient {
     font-size: 1rem;
     font-weight: 500;
     color: var(--color-text-primary);
-  }
-
-  .payment-amount-group {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 2px;
   }
 
   .payment-amount-original {
@@ -581,8 +849,12 @@
   }
 
   /* Cancel-out styles */
+  /* Inside the card, on a tinted ground so it reads as part of this payment
+     rather than a separate panel underneath it. */
   .cancel-out-section {
-    padding: 0 var(--space-lg) var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+    background-color: var(--color-bg-secondary);
+    border-top: 1px solid var(--color-border);
     display: flex;
     flex-direction: column;
     gap: var(--space-sm);

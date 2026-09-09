@@ -1,8 +1,15 @@
 import { error, redirect } from '@sveltejs/kit';
 import type { LayoutServerLoad } from './$types';
 import { db } from '$lib/server/db/client';
-import { households, householdMembers, users, invites, shoppingItems } from '$lib/server/db/schema';
-import { eq, and, ne, isNull, or, count, inArray, notInArray, asc } from 'drizzle-orm';
+import {
+  households,
+  householdMembers,
+  users,
+  invites,
+  shoppingItems,
+  paymentMethods
+} from '$lib/server/db/schema';
+import { eq, and, ne, isNull, or, count, inArray, notInArray, asc, desc } from 'drizzle-orm';
 
 /**
  * Shared household context for every tab (expenses, shopping, ...).
@@ -47,6 +54,30 @@ export const load: LayoutServerLoad = async ({ locals, params }) => {
     .from(householdMembers)
     .innerJoin(users, eq(householdMembers.userId, users.id))
     .where(eq(householdMembers.householdId, householdId));
+
+  // How each member wants to be paid, so the pay modal can offer a link
+  // instead of leaving people to ask. Scoped to this household's members and
+  // no further: this is the same class of detail as the email address already
+  // returned above, and it must not reach anyone outside a shared household.
+  const memberIds = members.map((m) => m.id);
+  const methods =
+    memberIds.length > 0
+      ? await db
+          .select({
+            userId: paymentMethods.userId,
+            provider: paymentMethods.provider,
+            handle: paymentMethods.handle,
+            isPreferred: paymentMethods.isPreferred
+          })
+          .from(paymentMethods)
+          .where(inArray(paymentMethods.userId, memberIds))
+          .orderBy(desc(paymentMethods.isPreferred), asc(paymentMethods.createdAt))
+      : [];
+
+  const paymentMethodsByUser: Record<string, typeof methods> = {};
+  for (const m of methods) {
+    (paymentMethodsByUser[m.userId] ??= []).push(m);
+  }
 
   // Pending invites for the invite modal (rendered from the layout so it is
   // reachable from any tab)
@@ -133,6 +164,7 @@ export const load: LayoutServerLoad = async ({ locals, params }) => {
     userRole: householdData[0].member.role,
     currentUserId: locals.user.id,
     userName: locals.user.name,
-    members
+    members,
+    paymentMethodsByUser
   };
 };
