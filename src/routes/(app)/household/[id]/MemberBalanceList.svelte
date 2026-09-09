@@ -42,6 +42,12 @@
     if (!blockedOpen) blockedFor = null;
   });
 
+  // Two different reasons a reminder is unavailable, and they need different
+  // titles: a cooldown is not a debt. Both the heading and the body read from
+  // this one test so they cannot drift apart again.
+  const isCooldown = $derived(blockedFor?.reason.startsWith('Wait') ?? false);
+  const blockedTitle = $derived(isCooldown ? 'Already reminded' : 'Pay your debts first');
+
   // Nudging is for reminding someone who owes you. Not available if you owe
   // them too, since settling up is then a conversation rather than a reminder.
   function canNudge(memberId: string): { canNudge: boolean; reason?: string } {
@@ -216,10 +222,10 @@
   </ul>
 {/if}
 
-<Modal bind:open={blockedOpen} title="Pay your debts first" size="sm">
+<Modal bind:open={blockedOpen} title={blockedTitle} size="sm">
   {#snippet children()}
     <p class="blocked-text">
-      {#if blockedFor?.reason.startsWith('Wait')}
+      {#if isCooldown}
         You have already reminded {blockedFor?.name} recently. {blockedFor?.reason}.
       {:else}
         You owe {blockedFor?.name} money too. Settle up with them before sending a reminder.
