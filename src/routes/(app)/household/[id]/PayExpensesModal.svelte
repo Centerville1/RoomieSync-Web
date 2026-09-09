@@ -65,6 +65,10 @@
 
   let showExpenseDetails = $state(false);
   let cancelOutAccepted = $state<Record<string, boolean>>({});
+
+  // Which recipient's alternate methods are open. One at a time: several
+  // expanded at once turns a payment list into a wall.
+  let expandedMethodsFor = $state<string | null>(null);
   let cancelOutDetailsShown = $state<Record<string, boolean>>({});
 
   // Reset state when modal opens
@@ -209,6 +213,32 @@
   }
 </script>
 
+{#snippet payMethod(
+  method: { provider: string; handle: string; isPreferred: boolean },
+  amount: number,
+  isPrimary: boolean
+)}
+  {@const meta = providerById(method.provider)}
+  {@const link = paymentLink(method.provider, method.handle, amount)}
+  <div class="pay-method" class:primary={isPrimary}>
+    <span class="pm-head">
+      <span class="pm-name">{meta?.name ?? method.provider}</span>
+      <CopyHandle
+        handle={formatHandle(method.provider, method.handle)}
+        label="{meta?.name ?? method.provider} handle"
+      />
+    </span>
+    {#if link}
+      <a class="pm-link" href={link.href} target="_blank" rel="noopener noreferrer">
+        {link.label}
+        <span class="pm-arrow" aria-hidden="true">↗</span>
+      </a>
+    {:else}
+      <span class="pm-nolink">Copy and paste into your bank app</span>
+    {/if}
+  </div>
+{/snippet}
+
 <Modal bind:open title="Pay Expenses" size="md">
   {#snippet children()}
     <form
@@ -268,34 +298,47 @@
                   </span>
                 </div>
 
-                <!-- How to actually pay them. The handle is always copyable
-                     text; a link is only ever added on top, because an in-app
-                     browser will not hand off to a native app at all and that
-                     cannot be fixed from here. -->
+                <!-- How to actually pay them. Only the preferred method is
+                     shown; the rest sit behind a disclosure that appears only
+                     when there are any, so the common case stays one line.
+
+                     The handle is always copyable text and a link is only ever
+                     added on top: an in-app browser will not hand off to a
+                     native app at all, and that cannot be fixed from here. -->
                 {#if methods.length > 0 && effective > 0}
+                  {@const primary = methods[0]}
+                  {@const alternates = methods.slice(1)}
                   <div class="pay-methods">
-                    {#each methods as method, i (method.provider + method.handle)}
-                      {@const meta = providerById(method.provider)}
-                      {@const link = paymentLink(method.provider, method.handle, effective)}
-                      <div class="pay-method" class:secondary={i > 0}>
-                        <span class="pm-name">{meta?.name ?? method.provider}</span>
-                        <CopyHandle
-                          handle={formatHandle(method.provider, method.handle)}
-                          label="{meta?.name ?? method.provider} handle"
-                        />
-                        {#if link}
-                          <a
-                            class="pm-link"
-                            href={link.href}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            {link.label}
-                            <span class="pm-arrow" aria-hidden="true">↗</span>
-                          </a>
-                        {/if}
-                      </div>
-                    {/each}
+                    {@render payMethod(primary, effective, true)}
+
+                    {#if alternates.length > 0}
+                      <button
+                        type="button"
+                        class="pm-more"
+                        aria-expanded={expandedMethodsFor === payment.creatorId}
+                        aria-controls="alt-methods-{payment.creatorId}"
+                        onclick={() =>
+                          (expandedMethodsFor =
+                            expandedMethodsFor === payment.creatorId ? null : payment.creatorId)}
+                      >
+                        <span
+                          class="pm-chevron"
+                          class:open={expandedMethodsFor === payment.creatorId}
+                          aria-hidden="true">⌄</span
+                        >
+                        {expandedMethodsFor === payment.creatorId
+                          ? 'Hide other ways to pay'
+                          : `Other ways to pay ${payment.name} (${alternates.length})`}
+                      </button>
+
+                      {#if expandedMethodsFor === payment.creatorId}
+                        <div class="pm-alternates" id="alt-methods-{payment.creatorId}">
+                          {#each alternates as method (method.provider + method.handle)}
+                            {@render payMethod(method, effective, false)}
+                          {/each}
+                        </div>
+                      {/if}
+                    {/if}
                   </div>
                 {/if}
 
@@ -469,54 +512,138 @@
   .pay-methods {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    margin-top: var(--space-xs);
-    padding-top: var(--space-xs);
+    gap: var(--space-xs);
+    margin-top: var(--space-sm);
+    padding-top: var(--space-sm);
     border-top: 1px dashed var(--color-border);
   }
 
   .pay-method {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: var(--space-sm);
     flex-wrap: wrap;
   }
 
-  /* Fallback methods sit quieter than the preferred one */
-  .pay-method.secondary {
-    opacity: 0.75;
+  .pm-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-sm);
+    min-width: 0;
   }
 
   .pm-name {
     color: var(--color-text-primary);
-    font-size: 0.78rem;
+    font-size: 0.8rem;
     font-weight: 700;
-    min-width: 4.5rem;
+    flex-shrink: 0;
   }
 
+  /* A real button rather than a text link: this is the action most people
+     want, and it needs to look like one on a phone. */
   .pm-link {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
-    margin-left: auto;
-    min-height: 32px;
+    gap: 4px;
+    min-height: 36px;
+    padding: 0 var(--space-md);
+    border: 1px solid var(--color-primary);
+    border-radius: 999px;
     color: var(--color-primary);
-    font-size: 0.8rem;
+    font-size: 0.82rem;
     font-weight: 700;
     text-decoration: none;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
 
   .pm-link:hover {
-    text-decoration: underline;
+    background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    text-decoration: none;
+  }
+
+  .pm-link:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
   }
 
   .pm-arrow {
-    font-size: 0.7rem;
+    font-size: 0.68rem;
+  }
+
+  /* Says why there is no button, rather than leaving a gap that reads as a
+     missing feature. */
+  .pm-nolink {
+    color: var(--color-text-tertiary);
+    font-size: 0.72rem;
+    font-style: italic;
+  }
+
+  .pm-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    align-self: flex-start;
+    min-height: 32px;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--color-text-secondary);
+    font-family: inherit;
+    font-size: 0.76rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .pm-more:hover {
+    color: var(--color-text-primary);
+  }
+
+  .pm-more:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-text-primary) 45%, transparent);
+    outline-offset: 3px;
+    border-radius: var(--radius-sm);
+  }
+
+  .pm-chevron {
+    display: inline-block;
+    font-size: 0.9rem;
+    line-height: 1;
+    transition: transform 0.15s;
+  }
+
+  .pm-chevron.open {
+    transform: rotate(180deg);
+  }
+
+  .pm-alternates {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    padding: var(--space-sm) 0 var(--space-xs) var(--space-sm);
+    border-left: 2px solid var(--color-border);
+  }
+
+  /* An alternate is a fallback, so it sits quieter than the preferred one */
+  .pm-alternates .pm-link {
+    border-color: var(--color-border);
+    color: var(--color-text-secondary);
+  }
+
+  .pm-alternates .pm-link:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
   }
 
   @media (max-width: 767px) {
-    .pm-link {
-      margin-left: 0;
+    .pay-method {
+      align-items: flex-start;
+    }
+
+    .pm-head {
+      flex-direction: column;
+      gap: 0;
     }
   }
 
