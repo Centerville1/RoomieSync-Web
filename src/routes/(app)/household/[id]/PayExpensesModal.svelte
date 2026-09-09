@@ -2,6 +2,8 @@
   import { shareFor } from '$lib/splits';
   import Modal from '$lib/components/Modal.svelte';
   import CopyAmount from '$lib/components/CopyAmount.svelte';
+  import CopyHandle from '$lib/components/CopyHandle.svelte';
+  import { providerById, formatHandle, paymentLink } from '$lib/payment-methods';
   import Button from '$lib/components/Button.svelte';
   import { enhance } from '$app/forms';
 
@@ -44,7 +46,8 @@
     reverseExpenses = [],
     members = [],
     currentUserId = '',
-    onPaymentComplete
+    onPaymentComplete,
+    paymentMethodsByUser = {}
   }: {
     open: boolean;
     selectedExpenseIds: Set<string>;
@@ -53,6 +56,11 @@
     members: Member[];
     currentUserId: string;
     onPaymentComplete?: () => void;
+    /** How each member wants to be paid, keyed by user id. */
+    paymentMethodsByUser?: Record<
+      string,
+      Array<{ provider: string; handle: string; isPreferred: boolean }>
+    >;
   } = $props();
 
   let showExpenseDetails = $state(false);
@@ -240,6 +248,7 @@
               {@const data = cancelOutData()[payment.creatorId]}
               {@const accepted = cancelOutAccepted[payment.creatorId]}
               {@const effective = getEffectiveAmount(payment.creatorId)}
+              {@const methods = paymentMethodsByUser[payment.creatorId] ?? []}
               <div class="payment-item-block">
                 <div class="payment-item">
                   <span class="payment-recipient">Send to {payment.name}</span>
@@ -258,6 +267,37 @@
                     {/if}
                   </span>
                 </div>
+
+                <!-- How to actually pay them. The handle is always copyable
+                     text; a link is only ever added on top, because an in-app
+                     browser will not hand off to a native app at all and that
+                     cannot be fixed from here. -->
+                {#if methods.length > 0 && effective > 0}
+                  <div class="pay-methods">
+                    {#each methods as method, i (method.provider + method.handle)}
+                      {@const meta = providerById(method.provider)}
+                      {@const link = paymentLink(method.provider, method.handle, effective)}
+                      <div class="pay-method" class:secondary={i > 0}>
+                        <span class="pm-name">{meta?.name ?? method.provider}</span>
+                        <CopyHandle
+                          handle={formatHandle(method.provider, method.handle)}
+                          label="{meta?.name ?? method.provider} handle"
+                        />
+                        {#if link}
+                          <a
+                            class="pm-link"
+                            href={link.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {link.label}
+                            <span class="pm-arrow" aria-hidden="true">↗</span>
+                          </a>
+                        {/if}
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
 
                 <!-- Cancel-out offer -->
                 {#if data && data.cancelOutAmount > 0}
@@ -424,6 +464,62 @@
 </Modal>
 
 <style>
+  /* How to pay this person, under their amount. Muted so the amount stays the
+     headline; these are the mechanics rather than the number. */
+  .pay-methods {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: var(--space-xs);
+    padding-top: var(--space-xs);
+    border-top: 1px dashed var(--color-border);
+  }
+
+  .pay-method {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+  }
+
+  /* Fallback methods sit quieter than the preferred one */
+  .pay-method.secondary {
+    opacity: 0.75;
+  }
+
+  .pm-name {
+    color: var(--color-text-primary);
+    font-size: 0.78rem;
+    font-weight: 700;
+    min-width: 4.5rem;
+  }
+
+  .pm-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: auto;
+    min-height: 32px;
+    color: var(--color-primary);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .pm-link:hover {
+    text-decoration: underline;
+  }
+
+  .pm-arrow {
+    font-size: 0.7rem;
+  }
+
+  @media (max-width: 767px) {
+    .pm-link {
+      margin-left: 0;
+    }
+  }
+
   .payment-summary {
     display: flex;
     flex-direction: column;

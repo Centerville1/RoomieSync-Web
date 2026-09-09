@@ -265,5 +265,38 @@ export const shoppingItems = sqliteTable('shopping_items', {
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
 });
 
+/**
+ * How each person wants to be paid back.
+ *
+ * A row per method rather than columns on `users`, because people keep more
+ * than one: Venmo with the roommates, Zelle with a parent who will not install
+ * anything. `isPreferred` marks the one to lead with.
+ *
+ * The handle is stored bare, without its @ or $, and decorated for display, so
+ * pasting a whole profile URL and typing a username both land the same way.
+ *
+ * Visible to fellow household members and no further: this is the same class of
+ * disclosure as the email address they can already see, and it must not leak to
+ * anyone outside a shared household.
+ */
+export const paymentMethods = sqliteTable('payment_methods', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  // Matches PaymentProviderId in $lib/payment-methods, which owns the link
+  // formats and the display rules for each one.
+  provider: text('provider').notNull(),
+  handle: text('handle').notNull(),
+  // Exactly one row per user should carry this; the action enforces it rather
+  // than a partial index, which SQLite cannot express through drizzle-kit push.
+  isPreferred: integer('is_preferred', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
+});
+
+export type PaymentMethod = typeof paymentMethods.$inferSelect;
+export type NewPaymentMethod = typeof paymentMethods.$inferInsert;
+
 export type ShoppingItem = typeof shoppingItems.$inferSelect;
 export type NewShoppingItem = typeof shoppingItems.$inferInsert;
