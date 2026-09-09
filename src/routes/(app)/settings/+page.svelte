@@ -76,7 +76,7 @@
 
       <!-- How people pay you back -->
       <Card padding="lg">
-        <h2>Getting paid</h2>
+        <h2 id="getting-paid">Getting paid</h2>
         <p class="section-description">
           Tell your households how to pay you back. Your preferred method is shown first when
           someone settles up with you, and everything here is visible only to people you share a
@@ -155,6 +155,16 @@
         {:else}
           <p class="method-empty">
             Nothing here yet. Add a method so people can pay you back without asking how.
+          </p>
+        {/if}
+
+        <!-- One saved and no fallback: worth saying once, here, where the
+             person is already looking at the list. -->
+        {#if data.paymentMethods.length === 1}
+          <p class="method-nudge">
+            Add a second method so someone who cannot use
+            {providerById(data.paymentMethods[0].provider)?.name ?? 'that one'} still has a way to pay
+            you.
           </p>
         {/if}
 
@@ -252,6 +262,17 @@
 </Modal>
 
 <style>
+  .method-nudge {
+    margin: 0 0 var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    border-left: 3px solid var(--color-secondary);
+    border-radius: var(--radius-sm);
+    background-color: color-mix(in srgb, var(--color-secondary) 8%, transparent);
+    color: var(--color-text-secondary);
+    font-size: 0.84rem;
+    line-height: 1.45;
+  }
+
   .method-list {
     list-style: none;
     margin: 0 0 var(--space-md);

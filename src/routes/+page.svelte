@@ -120,6 +120,32 @@
         </section>
       {/if}
 
+      <!-- Getting paid back only works if people fill this in, and nobody goes
+           looking in settings for a feature they have not seen, so it asks
+           here. Two states: none saved at all, or one saved and no fallback.
+           Silent once there are two, since the nagging has done its job. -->
+      {#if data.households && data.households.length > 0 && data.paymentMethodCount < 2}
+        <section class="pay-prompt" class:gentle={data.paymentMethodCount === 1}>
+          <div class="pay-prompt-text">
+            {#if data.paymentMethodCount === 0}
+              <strong>Add how people pay you back</strong>
+              <span>
+                Your household sees your Venmo, Cash App or Zelle when they settle up, so nobody has
+                to ask.
+              </span>
+            {:else}
+              <strong>Add a backup way to be paid</strong>
+              <span>
+                You have one. A second means someone who cannot use it still has a way to pay you.
+              </span>
+            {/if}
+          </div>
+          <a class="pay-prompt-btn" href="/settings#getting-paid">
+            {data.paymentMethodCount === 0 ? 'Add a method' : 'Add a backup'}
+          </a>
+        </section>
+      {/if}
+
       <section class="welcome-section">
         <h1>Your Households</h1>
         <p>Manage your shared expenses across all your households.</p>
@@ -249,6 +275,76 @@
 </Modal>
 
 <style>
+  /* Sits above the household list: prominent when there is nothing saved,
+     quieter once there is one and this is only a suggestion. */
+  .pay-prompt {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
+    padding: var(--space-md);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
+    border-radius: var(--radius-lg);
+    background-color: color-mix(in srgb, var(--color-primary) 8%, transparent);
+    flex-wrap: wrap;
+  }
+
+  .pay-prompt.gentle {
+    border-color: var(--color-border);
+    background-color: var(--color-bg-secondary);
+  }
+
+  .pay-prompt-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .pay-prompt-text strong {
+    color: var(--color-text-primary);
+    font-size: 0.95rem;
+  }
+
+  .pay-prompt-text span {
+    color: var(--color-text-secondary);
+    font-size: 0.82rem;
+    line-height: 1.45;
+  }
+
+  .pay-prompt-btn {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 var(--space-md);
+    border-radius: var(--radius-md);
+    background-color: var(--color-primary);
+    color: white;
+    font-size: 0.88rem;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .pay-prompt-btn:hover {
+    filter: brightness(1.05);
+  }
+
+  .pay-prompt.gentle .pay-prompt-btn {
+    background-color: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-text-primary);
+  }
+
+  @media (max-width: 767px) {
+    .pay-prompt-btn {
+      width: 100%;
+      justify-content: center;
+    }
+  }
+
   .home-container {
     min-height: 100vh;
   }
