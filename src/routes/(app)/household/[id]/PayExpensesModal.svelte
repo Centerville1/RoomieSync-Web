@@ -279,68 +279,93 @@
               {@const accepted = cancelOutAccepted[payment.creatorId]}
               {@const effective = getEffectiveAmount(payment.creatorId)}
               {@const methods = paymentMethodsByUser[payment.creatorId] ?? []}
+              {@const primary = methods[0]}
+              {@const alternates = methods.slice(1)}
+              {@const primaryMeta = primary ? providerById(primary.provider) : undefined}
+              {@const primaryLink = primary
+                ? paymentLink(primary.provider, primary.handle, effective)
+                : null}
               <div class="payment-item-block">
-                <div class="payment-item">
-                  <span class="payment-recipient">Send to {payment.name}</span>
-                  <span class="payment-amount-group">
-                    {#if accepted && data && data.cancelOutAmount > 0}
-                      <span class="payment-amount-original">{formatCurrency(payment.amount)}</span>
-                      {#if effective > 0}
-                        <!-- The amount actually being sent is the one worth
-                             copying, not the pre-cancel-out figure. -->
-                        <CopyAmount amount={effective} label="Amount to send {payment.name}" />
-                      {:else}
-                        <span class="payment-amount-zero">$0.00</span>
-                      {/if}
+                <!-- One card per recipient. The headline says who, how much and
+                     by what method in a single sentence, because that is the
+                     whole instruction: "Send Aidan $13.86 via Zelle". -->
+                <div class="payment-head">
+                  <div class="payment-line">
+                    <span class="payment-recipient">
+                      Send {payment.name}
+                    </span>
+                    {#if accepted && data && data.cancelOutAmount > 0 && effective === 0}
+                      <span class="payment-amount-zero">nothing</span>
                     {:else}
-                      <CopyAmount amount={payment.amount} label="Amount to send {payment.name}" />
-                    {/if}
-                  </span>
-                </div>
-
-                <!-- How to actually pay them. Only the preferred method is
-                     shown; the rest sit behind a disclosure that appears only
-                     when there are any, so the common case stays one line.
-
-                     The handle is always copyable text and a link is only ever
-                     added on top: an in-app browser will not hand off to a
-                     native app at all, and that cannot be fixed from here. -->
-                {#if methods.length > 0 && effective > 0}
-                  {@const primary = methods[0]}
-                  {@const alternates = methods.slice(1)}
-                  <div class="pay-methods">
-                    {@render payMethod(primary, effective, true)}
-
-                    {#if alternates.length > 0}
-                      <button
-                        type="button"
-                        class="pm-more"
-                        aria-expanded={expandedMethodsFor === payment.creatorId}
-                        aria-controls="alt-methods-{payment.creatorId}"
-                        onclick={() =>
-                          (expandedMethodsFor =
-                            expandedMethodsFor === payment.creatorId ? null : payment.creatorId)}
-                      >
-                        <span
-                          class="pm-chevron"
-                          class:open={expandedMethodsFor === payment.creatorId}
-                          aria-hidden="true">⌄</span
+                      {#if accepted && data && data.cancelOutAmount > 0}
+                        <span class="payment-amount-original">{formatCurrency(payment.amount)}</span
                         >
-                        {expandedMethodsFor === payment.creatorId
-                          ? 'Hide other ways to pay'
-                          : `Other ways to pay ${payment.name} (${alternates.length})`}
-                      </button>
-
-                      {#if expandedMethodsFor === payment.creatorId}
-                        <div class="pm-alternates" id="alt-methods-{payment.creatorId}">
-                          {#each alternates as method (method.provider + method.handle)}
-                            {@render payMethod(method, effective, false)}
-                          {/each}
-                        </div>
                       {/if}
+                      <CopyAmount
+                        amount={accepted && data && data.cancelOutAmount > 0
+                          ? effective
+                          : payment.amount}
+                        label="Amount to send {payment.name}"
+                      />
+                    {/if}
+                    {#if primaryMeta}
+                      <span class="payment-via">via {primaryMeta.name}</span>
                     {/if}
                   </div>
-                {/if}
+
+                  {#if primary && effective > 0}
+                    <div class="payment-handle-row">
+                      <CopyHandle
+                        handle={formatHandle(primary.provider, primary.handle)}
+                        label="{primaryMeta?.name ?? primary.provider} handle"
+                      />
+                      {#if primaryLink}
+                        <a
+                          class="pm-link"
+                          href={primaryLink.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {primaryLink.label}
+                          <span class="pm-arrow" aria-hidden="true">↗</span>
+                        </a>
+                      {/if}
+                    </div>
+                  {:else if effective > 0}
+                    <p class="payment-nomethod">
+                      {payment.name} has not said how to pay them yet.
+                    </p>
+                  {/if}
+
+                  {#if alternates.length > 0 && effective > 0}
+                    <button
+                      type="button"
+                      class="pm-more"
+                      aria-expanded={expandedMethodsFor === payment.creatorId}
+                      aria-controls="alt-methods-{payment.creatorId}"
+                      onclick={() =>
+                        (expandedMethodsFor =
+                          expandedMethodsFor === payment.creatorId ? null : payment.creatorId)}
+                    >
+                      <span
+                        class="pm-chevron"
+                        class:open={expandedMethodsFor === payment.creatorId}
+                        aria-hidden="true">⌄</span
+                      >
+                      {expandedMethodsFor === payment.creatorId
+                        ? 'Hide other ways'
+                        : `Other ways to pay ${payment.name} (${alternates.length})`}
+                    </button>
+
+                    {#if expandedMethodsFor === payment.creatorId}
+                      <div class="pm-alternates" id="alt-methods-{payment.creatorId}">
+                        {#each alternates as method (method.provider + method.handle)}
+                          {@render payMethod(method, effective, false)}
+                        {/each}
+                      </div>
+                    {/if}
+                  {/if}
+                </div>
 
                 <!-- Cancel-out offer -->
                 {#if data && data.cancelOutAmount > 0}
@@ -481,17 +506,17 @@
           </div>
         {/if}
 
-        <div class="payment-instructions">
-          {#if effectiveTotal === 0 && hasCancelOut}
+        <!-- Only kept for the zero case, where the reason nothing needs sending
+             is not otherwise obvious. The generic "send the amounts via Venmo,
+             Zelle, etc." is gone: each card now names the actual method, so
+             restating it in the abstract only added noise. -->
+        {#if effectiveTotal === 0 && hasCancelOut}
+          <div class="payment-instructions">
             <p class="instructions-text instructions-zero">
-              All debts fully cancel out -- click "Confirm" to mark everything as paid.
+              Everything cancels out. Mark as paid to settle up.
             </p>
-          {:else}
-            <p class="instructions-text">
-              Send the amounts above via Venmo, Zelle, etc., then click "Mark as Paid".
-            </p>
-          {/if}
-        </div>
+          </div>
+        {/if}
       </div>
     </form>
   {/snippet}
@@ -507,17 +532,6 @@
 </Modal>
 
 <style>
-  /* How to pay this person, under their amount. Muted so the amount stays the
-     headline; these are the mechanics rather than the number. */
-  .pay-methods {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-xs);
-    margin-top: var(--space-sm);
-    padding-top: var(--space-sm);
-    border-top: 1px dashed var(--color-border);
-  }
-
   .pay-method {
     display: flex;
     align-items: center;
@@ -762,32 +776,63 @@
     flex-direction: column;
   }
 
+  /* One card per recipient: everything about paying this person, including
+     the cancel-out, lives inside a single bordered box. The old version split
+     the same information across three dashed dividers, which read as three
+     unrelated sections. */
   .payment-item-block {
-    border-bottom: 1px solid var(--color-border);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-primary);
+    margin-bottom: var(--space-sm);
+    overflow: hidden;
   }
 
   .payment-item-block:last-child {
-    border-bottom: none;
+    margin-bottom: 0;
   }
 
-  .payment-item {
+  .payment-head {
     display: flex;
-    justify-content: space-between;
+    flex-direction: column;
+    gap: var(--space-xs);
+    padding: var(--space-md);
+  }
+
+  /* Reads as one sentence: Send Aidan $13.86 via Zelle */
+  .payment-line {
+    display: flex;
     align-items: center;
-    padding: var(--space-md) var(--space-lg);
+    gap: var(--space-xs);
+    flex-wrap: wrap;
+  }
+
+  .payment-via {
+    color: var(--color-text-secondary);
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+
+  /* Small, under the headline, because it is a detail you copy rather than
+     something to read every time. */
+  .payment-handle-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+  }
+
+  .payment-nomethod {
+    margin: 0;
+    color: var(--color-text-tertiary);
+    font-size: 0.78rem;
+    font-style: italic;
   }
 
   .payment-recipient {
     font-size: 1rem;
     font-weight: 500;
     color: var(--color-text-primary);
-  }
-
-  .payment-amount-group {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 2px;
   }
 
   .payment-amount-original {
@@ -804,8 +849,12 @@
   }
 
   /* Cancel-out styles */
+  /* Inside the card, on a tinted ground so it reads as part of this payment
+     rather than a separate panel underneath it. */
   .cancel-out-section {
-    padding: 0 var(--space-lg) var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+    background-color: var(--color-bg-secondary);
+    border-top: 1px solid var(--color-border);
     display: flex;
     flex-direction: column;
     gap: var(--space-sm);
