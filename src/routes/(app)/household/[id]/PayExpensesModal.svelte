@@ -1,6 +1,7 @@
 <script lang="ts">
   import { shareFor } from '$lib/splits';
   import Modal from '$lib/components/Modal.svelte';
+  import CopyAmount from '$lib/components/CopyAmount.svelte';
   import Button from '$lib/components/Button.svelte';
   import { enhance } from '$app/forms';
 
@@ -246,12 +247,14 @@
                     {#if accepted && data && data.cancelOutAmount > 0}
                       <span class="payment-amount-original">{formatCurrency(payment.amount)}</span>
                       {#if effective > 0}
-                        <span class="payment-amount">{formatCurrency(effective)}</span>
+                        <!-- The amount actually being sent is the one worth
+                             copying, not the pre-cancel-out figure. -->
+                        <CopyAmount amount={effective} label="Amount to send {payment.name}" />
                       {:else}
                         <span class="payment-amount-zero">$0.00</span>
                       {/if}
                     {:else}
-                      <span class="payment-amount">{formatCurrency(payment.amount)}</span>
+                      <CopyAmount amount={payment.amount} label="Amount to send {payment.name}" />
                     {/if}
                   </span>
                 </div>
@@ -562,12 +565,6 @@
     flex-direction: column;
     align-items: flex-end;
     gap: 2px;
-  }
-
-  .payment-amount {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--color-error, #ef4444);
   }
 
   .payment-amount-original {
